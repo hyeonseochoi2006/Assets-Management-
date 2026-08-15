@@ -54,9 +54,13 @@ but must never issue or execute a final BUY order.
 )
 
 
-def run_cio_pipeline(ticker: str) -> tuple[str, str]:
+def run_cio_pipeline(
+    ticker: str,
+    portfolio_snapshot: str | None = None,
+) -> tuple[str, str]:
     """Run the full read-only investment decision-support pipeline."""
-    portfolio_snapshot = get_live_portfolio_snapshot()
+    if portfolio_snapshot is None:
+        portfolio_snapshot = get_live_portfolio_snapshot()
 
     analysis_report = run_analysis(ticker)
 
