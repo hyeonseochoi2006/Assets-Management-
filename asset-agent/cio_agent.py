@@ -1,9 +1,13 @@
+import os
+import sys
+
 from agents import Agent, Runner
 
 from analysis_agent import run_analysis
-from portfolio_agent import run_portfolio_assessment
-from risk_agent import run_risk_assessment
 from execution_agent import run_execution_assessment
+from portfolio_agent import run_portfolio_assessment
+from portfolio_monitor import get_live_portfolio_snapshot
+from risk_agent import run_risk_assessment
 
 
 cio_agent = Agent(
@@ -30,6 +34,7 @@ You must:
 - If Risk Agent says REJECT, clearly mark the proposal as BLOCKED.
 - Never invent prices, financial figures, portfolio holdings, or market conditions.
 - Never recommend leverage or options.
+- Treat UNAVAILABLE values in the portfolio snapshot as genuinely missing data.
 
 Return a concise report with these sections:
 1. Candidate
@@ -60,7 +65,7 @@ def run_cio_pipeline(
     # 1. Analysis Agent researches the candidate using current web information.
     analysis_report = run_analysis(ticker)
 
-    # 2. Portfolio Agent evaluates fit using the actual Analysis report.
+    # 2. Portfolio Agent evaluates fit using the LIVE Toss portfolio snapshot.
     portfolio_output = run_portfolio_assessment(
         ticker,
         analysis_report,
@@ -94,6 +99,9 @@ def run_cio_pipeline(
 CANDIDATE:
 {ticker}
 
+LIVE TOSS PORTFOLIO SNAPSHOT:
+{portfolio_snapshot}
+
 ANALYSIS AGENT REPORT:
 {analysis_report}
 
@@ -114,42 +122,57 @@ Do not make the final buy decision.
     return cio_result.final_output
 
 
-if __name__ == "__main__":
-    # TEST DATA ONLY. Replace this with the investor's real portfolio later.
-    portfolio_snapshot = """
-TEST PORTFOLIO
-Total portfolio value: $100,000
-Cash: 20%
-NVDA: 5%
-MSFT: 15%
-AAPL: 15%
-Other equities: 45%
-Risk tolerance: Moderate
-Maximum single-stock allocation: 15%
-Maximum technology-sector allocation: 50%
-"""
+def _candidate_ticker() -> str:
+    # Priority: command-line ticker -> environment variable -> NVDA demonstration default.
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        return sys.argv[1].strip().upper()
 
+    configured = os.getenv("CANDIDATE_TICKER", "").strip()
+    if configured:
+        return configured.upper()
+
+    return "NVDA"
+
+
+if __name__ == "__main__":
+    ticker = _candidate_ticker()
+
+    # Read the investor's real Toss holdings every time the CIO pipeline starts.
+    portfolio_snapshot = get_live_portfolio_snapshot()
+
+    # No made-up percentage limits. User-specific numeric limits are not configured yet.
     risk_limits = """
-Investor risk tolerance: Moderate
-Maximum single-stock allocation: 15%
-Maximum technology-sector allocation: 50%
-Capital preservation is important.
-No leverage allowed.
-No options allowed.
+USER RISK POLICY STATUS:
+- User-specific numeric position limits are NOT CONFIGURED yet.
+- User-specific sector limits are NOT CONFIGURED yet.
+- Do not invent numeric limits.
+- If a numeric risk limit is needed, mark it as missing information.
+
+HARD SAFETY RULES:
+- Investor makes the final buy decision.
+- No leverage.
+- No options.
+- Capital preservation matters.
 """
 
     execution_constraints = """
 Investor makes the final buy decision.
+Do not execute a real trade.
 No leverage.
 No options.
-Capital preservation is important.
-Do not execute a real trade.
-If live price, spread, volume, or volatility data are missing, report them as missing.
+Never override the Risk Agent.
+If live price, spread, volume, volatility, tax, or other execution data are missing,
+report them as missing instead of guessing.
 """
+
+    print("=== LIVE PORTFOLIO DETECTED ===")
+    print(portfolio_snapshot)
+    print("\n=== CIO PIPELINE START ===")
+    print(f"Candidate: {ticker}\n")
 
     print(
         run_cio_pipeline(
-            ticker="NVDA",
+            ticker=ticker,
             portfolio_snapshot=portfolio_snapshot,
             risk_limits=risk_limits,
             execution_constraints=execution_constraints,
