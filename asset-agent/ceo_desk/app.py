@@ -89,7 +89,7 @@ with st.sidebar:
     st.header("CEO Control")
     st.caption("Brokerage connection: Toss Securities / Read-only")
 
-    if st.button("포트폴리오 새로고침", use_container_width=True):
+    if st.button("포트폴리오 새로고침", width="stretch"):
         _reset_portfolio()
         st.rerun()
 
@@ -130,48 +130,61 @@ if prompt:
     current_snapshot = _portfolio_snapshot()
 
     with st.chat_message("assistant"):
-        if command.action == CEOAction.SHOW_PORTFOLIO:
-            response = current_snapshot
-            kind = "portfolio"
-            st.code(response, language=None)
+        try:
+            if command.action == CEOAction.SHOW_PORTFOLIO:
+                response = current_snapshot
+                kind = "portfolio"
+                st.code(response, language=None)
 
-        elif command.action == CEOAction.REVIEW_PORTFOLIO:
-            with st.spinner("Portfolio 부서가 실제 계좌를 점검하는 중입니다..."):
-                review = run_portfolio_review(current_snapshot)
-            response = f"### PORTFOLIO CEO REVIEW\n\n{review}\n\n**FINAL DECISION: CEO REQUIRED**"
-            kind = "markdown"
-            st.markdown(response)
-
-        elif command.action == CEOAction.ANALYZE_COMPANY and command.ticker:
-            ticker = command.ticker
-            with st.spinner(
-                f"{ticker}: Analysis → Portfolio → Risk → Execution → CIO 진행 중..."
-            ):
-                _, cio_report = run_cio_pipeline(
-                    ticker,
-                    portfolio_snapshot=current_snapshot,
+            elif command.action == CEOAction.REVIEW_PORTFOLIO:
+                with st.spinner("Portfolio 부서가 실제 계좌를 점검하는 중입니다..."):
+                    review = run_portfolio_review(current_snapshot)
+                response = (
+                    f"### PORTFOLIO CEO REVIEW\n\n{review}\n\n"
+                    "**FINAL DECISION: CEO REQUIRED**"
                 )
+                kind = "markdown"
+                st.markdown(response)
+
+            elif command.action == CEOAction.ANALYZE_COMPANY and command.ticker:
+                ticker = command.ticker
+                with st.spinner(
+                    f"{ticker}: Analysis → Portfolio → Risk → Execution → CIO 진행 중..."
+                ):
+                    _, cio_report = run_cio_pipeline(
+                        ticker,
+                        portfolio_snapshot=current_snapshot,
+                    )
+                response = (
+                    f"### CEO BRIEF — {ticker}\n\n"
+                    f"{cio_report}\n\n"
+                    "---\n**FINAL DECISION: CEO REQUIRED**"
+                )
+                kind = "markdown"
+                st.markdown(response)
+
+            elif command.action == CEOAction.HELP:
+                response = _help_text()
+                kind = "markdown"
+                st.markdown(response)
+
+            else:
+                response = (
+                    "아직 그 지시는 정확히 분류하지 못했습니다.\n\n"
+                    "예를 들어 **`PANW 분석해`**, **`팔란티어 분석해`**, "
+                    "**`내 포트폴리오 보여줘`**, **`내 포트폴리오 점검해`**처럼 입력해 주세요."
+                )
+                kind = "markdown"
+                st.markdown(response)
+
+        except Exception as exc:
             response = (
-                f"### CEO BRIEF — {ticker}\n\n"
-                f"{cio_report}\n\n"
-                "---\n**FINAL DECISION: CEO REQUIRED**"
+                "### CEO Desk 작업 실패\n\n"
+                f"`{type(exc).__name__}`: {exc}\n\n"
+                "주문은 실행되지 않았습니다. 연결 정보 또는 Agent 실행 상태를 확인해 주세요."
             )
             kind = "markdown"
-            st.markdown(response)
-
-        elif command.action == CEOAction.HELP:
-            response = _help_text()
-            kind = "markdown"
-            st.markdown(response)
-
-        else:
-            response = (
-                "아직 그 지시는 정확히 분류하지 못했습니다.\n\n"
-                "예를 들어 **`PANW 분석해`**, **`팔란티어 분석해`**, "
-                "**`내 포트폴리오 보여줘`**, **`내 포트폴리오 점검해`**처럼 입력해 주세요."
-            )
-            kind = "markdown"
-            st.markdown(response)
+            st.error(response)
 
     st.session_state.messages.append(
         {"role": "assistant", "kind": kind, "content": response}
