@@ -1,3 +1,5 @@
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,6 +21,27 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+
+def _runtime_branch() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        branch = result.stdout.strip()
+        if branch:
+            return branch
+    except Exception:
+        pass
+    return os.getenv("ASSET_BRANCH", "unknown") or "unknown"
+
+
+def _runtime_mode(branch: str) -> str:
+    return "PRODUCTION" if branch == "main" else "DEVELOPMENT"
 
 
 def _load_portfolio() -> str:
@@ -71,9 +94,15 @@ def _render_message(message: dict[str, str]) -> None:
             st.markdown(message["content"])
 
 
+branch = _runtime_branch()
+mode = _runtime_mode(branch)
 snapshot = _portfolio_snapshot()
 
 st.title("ASSET MANAGEMENT — CEO DESK")
+if mode == "PRODUCTION":
+    st.success("PRODUCTION · main — 실제 사용용 안정 버전")
+else:
+    st.warning(f"DEV MODE · {branch} — 개발/실험용 버전")
 st.caption("CEO가 자연어로 지시하면 CIO와 각 투자 부서가 업무를 수행합니다.")
 
 market_value = _snapshot_value(snapshot, "Market Value")
@@ -87,6 +116,8 @@ with metric_right:
 
 with st.sidebar:
     st.header("CEO Control")
+    st.write(f"**Mode:** {mode}")
+    st.write(f"**Branch:** `{branch}`")
     st.caption("Brokerage connection: Toss Securities / Read-only")
 
     if st.button("포트폴리오 새로고침", width="stretch"):
