@@ -15,178 +15,143 @@ class ExecutionAssessment(BaseModel):
     conditions_before_execution: list[str]
     execution_verdict: str
     missing_data: list[str]
-    execution_agent = Agent(
+
+
+execution_agent = Agent(
     name="Execution Agent",
+    instructions="""
+You are an investment execution planning agent.
 
-                                                        instructions="""
-                                                        You are an investment execution planning agent.
+You receive:
+1. Analysis Agent report
+2. Portfolio Agent report
+3. Risk Agent report
+4. Execution constraints
 
-                                                        You receive:
-                                                        1. Analysis Agent report
-                                                        2. Portfolio Agent report
-                                                        3. Risk Agent report
-                                                        4. Execution constraints
+You DO NOT execute trades.
+You DO NOT make the final buy decision.
+The investor makes the final decision.
 
-                                                        You DO NOT execute trades.
+Your job is to determine how a proposed investment could be executed efficiently IF the investor approves it.
 
-                                                        You DO NOT make the final buy decision.
+Evaluate:
+- Position size constraints
+- Order type
+- Entry method
+- Number of purchase tranches
+- Liquidity
+- Volatility
+- Spread risk
+- Timing risk
+- Earnings or major event risk
+- Execution-related downside
 
-                                                        The investor makes the final decision.
+IMPORTANT:
+- Do not invent current prices, spreads, volume, volatility, or market conditions.
+- If live market information is missing, put it in missing_data.
+- Never recommend leverage.
+- Never recommend options.
+- Never override Risk Agent limits.
 
-                                                        Your job is to determine how a proposed investment
-                                                        could be executed efficiently IF the investor approves it.
+Execution risk score:
+0 = very low
+100 = extremely high
 
-                                                        Evaluate:
+execution_risk_level must be one of:
+LOW
+MODERATE
+HIGH
+CRITICAL
 
-                                                        - Position size constraints
-                                                        - Order type
-                                                        - Entry method
-                                                        - Number of purchase tranches
-                                                        - Liquidity
-                                                        - Volatility
-                                                        - Spread risk
-                                                        - Timing risk
-                                                        - Earnings or major event risk
-                                                        - Execution-related downside
+execution_verdict must be one of:
+READY
+READY WITH CONDITIONS
+WAIT
+INSUFFICIENT DATA
 
-                                                        IMPORTANT:
+preferred_order_type must be one of:
+LIMIT
+MARKET
+NO ORDER RECOMMENDED
 
-                                                        Do not invent current prices, spreads, volume,
-                                                        volatility, or market conditions.
-
-                                                        If live market information is missing,
-                                                        put it in missing_data.
-
-                                                        Never recommend leverage.
-
-                                                        Never recommend options.
-
-                                                        Never override Risk Agent limits.
-
-                                                        Execution risk score:
-
-                                                        0 = very low
-                                                        100 = extremely high
-
-                                                        execution_risk_level must be one of:
-
-                                                        LOW
-                                                        MODERATE
-                                                        HIGH
-                                                        CRITICAL
-
-                                                        execution_verdict must be one of:
-
-                                                        READY
-                                                        READY WITH CONDITIONS
-                                                        WAIT
-                                                        INSUFFICIENT DATA
-
-                                                        preferred_order_type must be one of:
-
-                                                        LIMIT
-                                                        MARKET
-                                                        NO ORDER RECOMMENDED
-
-                                                        preferred_entry_method must be one of:
-
-                                                        SINGLE ENTRY
-                                                        STAGED ENTRY
-                                                        WAIT
-                                                        """,
-
-                                                            output_type=ExecutionAssessment,
-                                                            )analysis_report = """
-                                                            Ticker: NVDA
-
-                                                            Business Quality: 9/10
-                                                            Growth: 9/10
-                                                            Financial Strength: 9/10
-                                                            Valuation: 6/10
-
-                                                            Confidence: 83/100
-
-                                                            Main risks:
-                                                            High valuation,
-                                                            customer concentration,
-                                                            competition,
-                                                            AI capital-spending slowdown.
-                                                            """
+preferred_entry_method must be one of:
+SINGLE ENTRY
+STAGED ENTRY
+WAIT
+""",
+    output_type=ExecutionAssessment,
+)
 
 
-    portfolio_report = """
-                                                            Ticker: NVDA
+def run_execution_assessment(
+    ticker: str,
+    analysis_report: str,
+    portfolio_report: str,
+    risk_report: str,
+    execution_constraints: str,
+) -> ExecutionAssessment:
+    result = Runner.run_sync(
+        execution_agent,
+        f"""
+ANALYSIS REPORT:
+{analysis_report}
 
-                                                            Current Weight: 5.0%
-                                                            Target Weight Range: 3.0% - 7.5%
-                                                            Maximum Weight: 15.0%
+PORTFOLIO REPORT:
+{portfolio_report}
 
-                                                            Portfolio Fit Score: 78/100
+RISK REPORT:
+{risk_report}
 
-                                                            Technology exposure is already substantial.
-                                                            """
+EXECUTION CONSTRAINTS:
+{execution_constraints}
 
-
-                                                            risk_report = """
-                                                            Risk Verdict:
-                                                            PASS WITH LIMITS
-
-                                                            Rules:
-
-                                                            Maintain NVDA within 3.0% - 7.5%.
-
-                                                            Do not increase above 7.5%
-                                                            without additional review.
-
-                                                            Keep total technology exposure
-                                                            below 50%.
-
-                                                            No leverage.
-
-                                                            No options.
-                                                            """
+Evaluate how {ticker} could be executed IF the investor approves the purchase.
+Do not place or simulate a real order.
+""",
+    )
+    return result.final_output
 
 
-                                                            execution_constraints = """
-                                                            Investor makes final buy decision.
+if __name__ == "__main__":
+    test_analysis = """
+Ticker: NVDA
+Business Quality: 9/10
+Growth: 9/10
+Financial Strength: 9/10
+Valuation: 6/10
+Confidence: 83/100
+"""
 
-                                                            No leverage.
-                                                            No options.
+    test_portfolio = """
+Ticker: NVDA
+Current Weight: 5.0%
+Target Weight Range: 3.0% - 7.5%
+Maximum Weight: 15.0%
+Portfolio Fit Score: 78/100
+"""
 
-                                                            Capital preservation is important.
+    test_risk = """
+Risk Verdict: PASS WITH LIMITS
+Maintain NVDA within 3.0% - 7.5%.
+Do not increase above 7.5% without additional review.
+Keep total technology exposure below 50%.
+No leverage.
+No options.
+"""
 
-                                                            Live price and market microstructure
-                                                            data are currently not supplied.
-                                                            """
+    test_constraints = """
+Investor makes final buy decision.
+No leverage.
+No options.
+Capital preservation is important.
+Live price and market microstructure data are currently not supplied.
+"""
 
-
-                                                            result = Runner.run_sync(
-                                                                execution_agent,
-                                                                    f"""
-                                                                    ANALYSIS REPORT:
-
-                                                                    {analysis_report}
-
-
-                                                                    PORTFOLIO REPORT:
-
-                                                                    {portfolio_report}
-
-
-                                                                    RISK REPORT:
-
-                                                                    {risk_report}
-
-
-                                                                    EXECUTION CONSTRAINTS:
-
-                                                                    {execution_constraints}
-
-
-                                                                    Evaluate how NVDA could be executed
-                                                                    IF the investor approves the purchase.
-                                                                    """,
-                                                                    )
-
-
-                                                                    print(result.final_output.model_dump_json(indent=2))
+    output = run_execution_assessment(
+        "NVDA",
+        test_analysis,
+        test_portfolio,
+        test_risk,
+        test_constraints,
+    )
+    print(output.model_dump_json(indent=2))
