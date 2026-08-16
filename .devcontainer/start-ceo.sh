@@ -4,6 +4,7 @@ set -u
 START_LOG="/tmp/asset-ceo-start.log"
 APP_LOG="/tmp/asset-ceo-desk.log"
 API_LOG="/tmp/asset-hq-api.log"
+HQ_LOG="/tmp/asset-hq-frontend.log"
 
 # Resolve the repository from this script's own location instead of assuming
 # the Codespaces lifecycle command starts inside the Git repository.
@@ -28,7 +29,7 @@ cd "$REPO_ROOT/asset-agent" || {
   exit 1
 }
 
-# CEO Desk / Streamlit
+# CEO Desk / Streamlit backup UI
 if curl -fsS http://127.0.0.1:8501/_stcore/health >/dev/null 2>&1; then
   echo "[$(date -Iseconds)] CEO Desk already healthy on 8501" >>"$START_LOG"
 else
@@ -56,5 +57,21 @@ else
     echo "[$(date -Iseconds)] HQ API launched pid=$API_PID branch=$BRANCH mode=$ASSET_ENV" >>"$START_LOG"
   else
     echo "[$(date -Iseconds)] ERROR: fastapi/uvicorn not installed; run pip install -r asset-agent/requirements.txt" >>"$START_LOG"
+  fi
+fi
+
+# React Asset Management HQ
+if curl -fsS http://127.0.0.1:5173 >/dev/null 2>&1; then
+  echo "[$(date -Iseconds)] React HQ already healthy on 5173" >>"$START_LOG"
+else
+  if [ -d "$REPO_ROOT/asset-hq/node_modules" ]; then
+    cd "$REPO_ROOT/asset-hq" || exit 1
+    nohup npm run dev -- --host 0.0.0.0 --port 5173 \
+      >"$HQ_LOG" 2>&1 &
+
+    HQ_PID=$!
+    echo "[$(date -Iseconds)] React HQ launched pid=$HQ_PID branch=$BRANCH mode=$ASSET_ENV" >>"$START_LOG"
+  else
+    echo "[$(date -Iseconds)] ERROR: asset-hq/node_modules missing; run npm --prefix asset-hq install" >>"$START_LOG"
   fi
 fi
