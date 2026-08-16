@@ -1,7 +1,9 @@
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from data.toss_client import TossAPIError, get_live_portfolio
+from operations.models import PortfolioSnapshot, PositionSnapshot
 
 
 def _to_float(value: Any) -> float | None:
@@ -29,6 +31,10 @@ def _money_pairs(value: Any) -> list[tuple[str, float]]:
         if amount is not None:
             pairs.append((currency.upper(), amount))
     return pairs
+
+
+def _money_dict(value: Any) -> dict[str, float]:
+    return {currency: amount for currency, amount in _money_pairs(value)}
 
 
 def _format_money(value: Any) -> str:
@@ -129,15 +135,12 @@ def _total_market_by_currency(holdings_payload: dict[str, Any]) -> dict[str, flo
         return {}
 
     amount = market_value.get("amount", market_value)
-    totals: dict[str, float] = {}
-    for currency, value in _money_pairs(amount):
-        totals[currency] = value
-    return totals
+    return _money_dict(amount)
 
 
-def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
-    """Convert raw Toss data into a compact, agent-friendly snapshot."""
-    account_seq = str(portfolio.get("accountSeq", "UNAVAILABLE"))
+def _validated_payloads(
+    portfolio: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     holdings_payload = portfolio.get("holdings", {})
     prices_payload = portfolio.get("prices", {})
 
@@ -149,6 +152,90 @@ def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
     result = holdings_payload.get("result", {})
     if not isinstance(result, dict):
         result = {}
+
+    return holdings_payload, prices_payload, result
+
+
+def build_structured_portfolio_snapshot(
+    portfolio: dict[str, Any],
+) -> PortfolioSnapshot:
+    """Build a machine-comparable snapshot without inventing unavailable values."""
+    account_seq = str(portfolio.get("accountSeq", "UNAVAILABLE"))
+    holdings_payload, prices_payload, result = _validated_payloads(portfolio)
+
+    total_purchase = result.get("totalPurchaseAmount")
+    market_value = result.get("marketValue", {})
+    profit_loss = result.get("profitLoss", {})
+    daily_profit_loss = result.get("dailyProfitLoss", {})
+
+    market_amount = market_value.get("amount") if isinstance(market_value, dict) else None
+    profit_amount = profit_loss.get("amount") if isinstance(profit_loss, dict) else None
+    daily_profit_amount = (
+        daily_profit_loss.get("amount")
+        if isinstance(daily_profit_loss, dict)
+        else None
+    )
+
+    holding_records = _best_holding_record_by_symbol(holdings_payload)
+    prices = _price_map(prices_payload)
+    total_market = _total_market_by_currency(holdings_payload)
+
+    symbols = portfolio.get("symbols", [])
+    if not isinstance(symbols, list):
+        symbols = []
+
+    positions: list[PositionSnapshot] = []
+    for raw_symbol in symbols:
+        symbol = str(raw_symbol)
+        record = holding_records.get(symbol, {})
+        price_info = prices.get(symbol, {})
+
+        currency = price_info.get("currency")
+        currency_text = str(currency).upper() if currency else None
+        last_price = _to_float(price_info.get("lastPrice"))
+        quantity = _first_numeric(
+            record,
+            ("quantity", "holdingQuantity", "totalQuantity", "balanceQuantity"),
+        )
+
+        position_value = _holding_value_from_record(record, currency_text)
+        if position_value is None and quantity is not None and last_price is not None:
+            position_value = quantity * last_price
+
+        weight = None
+        if currency_text and position_value is not None:
+            currency_total = total_market.get(currency_text)
+            if currency_total is not None and currency_total > 0:
+                weight = position_value / currency_total * 100
+
+        positions.append(
+            PositionSnapshot(
+                symbol=symbol,
+                currency=currency_text,
+                quantity=quantity,
+                price=last_price,
+                position_value=position_value,
+                weight_pct=weight,
+            )
+        )
+
+    return PortfolioSnapshot(
+        captured_at=datetime.now(timezone.utc).isoformat(),
+        account_seq=account_seq,
+        positions=positions,
+        market_value_by_currency=_money_dict(market_amount),
+        total_purchase_by_currency=_money_dict(total_purchase),
+        profit_loss_by_currency=_money_dict(profit_amount),
+        daily_profit_loss_by_currency=_money_dict(daily_profit_amount),
+        cash_available=None,
+        cash_status="UNAVAILABLE FROM CURRENT HOLDINGS DATA",
+    )
+
+
+def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
+    """Convert raw Toss data into a compact, agent-friendly snapshot."""
+    account_seq = str(portfolio.get("accountSeq", "UNAVAILABLE"))
+    holdings_payload, prices_payload, result = _validated_payloads(portfolio)
 
     total_purchase = result.get("totalPurchaseAmount")
     market_value = result.get("marketValue", {})
@@ -254,6 +341,15 @@ def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
 
 def get_live_portfolio_snapshot() -> str:
     return build_portfolio_snapshot(get_live_portfolio())
+
+
+def get_live_portfolio_snapshots() -> tuple[str, PortfolioSnapshot]:
+    """Fetch Toss once and return both human-readable and structured snapshots."""
+    portfolio = get_live_portfolio()
+    return (
+        build_portfolio_snapshot(portfolio),
+        build_structured_portfolio_snapshot(portfolio),
+    )
 
 
 if __name__ == "__main__":
