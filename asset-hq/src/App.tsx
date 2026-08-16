@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 
 import { getHealth } from './api/hqApi'
-import { AgentRoom } from './components/AgentRoom'
 import { CeoCommand } from './components/CeoCommand'
+import { OfficeFloor } from './components/OfficeFloor'
 import { ReportPanel } from './components/ReportPanel'
 import { Workflow } from './components/Workflow'
 import { useJobStatus } from './hooks/useJobStatus'
@@ -64,43 +64,21 @@ export default function App() {
       <main>
         <Workflow order={pipelineOrder} agents={agents} />
 
-        <section className="executive-floor">
-          <div className="ceo-office">
-            <div className="ceo-office-top">
-              <div className="ceo-avatar">CEO</div>
-              <div>
-                <div className="eyebrow">EXECUTIVE OFFICE</div>
-                <h3>CEO · YOU</h3>
-              </div>
-              <span className="authority-badge">FINAL AUTHORITY</span>
-            </div>
-            <p>투자정책을 승인하고 모든 최종 투자 결정을 내립니다.</p>
-            <div className="task-box">
-              <span>ROLE</span>
-              <strong>보고 확인 · 승인 · 보류 · 거절</strong>
-            </div>
-          </div>
-          <AgentRoom agent="CIO" state={agents.CIO} selected={selectedAgent === 'CIO'} onSelect={setSelectedAgent} />
-        </section>
+        <OfficeFloor
+          agents={agents}
+          pipelineOrder={pipelineOrder}
+          selectedAgent={selectedAgent}
+          onSelectAgent={setSelectedAgent}
+        />
 
-        <div className="floor-divider"><span>DELEGATION</span></div>
-
-        <section className="department-grid">
-          <AgentRoom agent="Analysis" state={agents.Analysis} selected={selectedAgent === 'Analysis'} onSelect={setSelectedAgent} />
-          <AgentRoom agent="Portfolio" state={agents.Portfolio} selected={selectedAgent === 'Portfolio'} onSelect={setSelectedAgent} />
-          <AgentRoom agent="Risk" state={agents.Risk} selected={selectedAgent === 'Risk'} onSelect={setSelectedAgent} />
-          <AgentRoom agent="Execution" state={agents.Execution} selected={selectedAgent === 'Execution'} onSelect={setSelectedAgent} />
-        </section>
-
-        <div className="floor-divider"><span>REPORTING</span></div>
-
-        <section className="briefing-floor">
-          <AgentRoom agent="Briefing" state={agents.Briefing} selected={selectedAgent === 'Briefing'} onSelect={setSelectedAgent} />
+        <section className="office-inspector-row">
           <aside className="inspector-panel">
             <div className="eyebrow">AGENT INSPECTOR</div>
-            <h2>{selectedAgent.toUpperCase()}</h2>
-            <div className={`inspector-status status-${selected.status.toLowerCase()}`}>
-              <span className="status-dot" /> {selected.status}
+            <div className="inspector-heading">
+              <h2>{selectedAgent.toUpperCase()}</h2>
+              <div className={`inspector-status status-${selected.status.toLowerCase()}`}>
+                <span className="status-dot" /> {selected.status}
+              </div>
             </div>
             <dl>
               <div>
@@ -113,6 +91,17 @@ export default function App() {
               </div>
             </dl>
           </aside>
+
+          <div className="office-guide-panel">
+            <div className="eyebrow">HOW TO READ THE OFFICE</div>
+            <div className="guide-items">
+              <span><i className="guide-dot idle" /> IDLE · 대기</span>
+              <span><i className="guide-dot working" /> WORKING · 실제 업무 중</span>
+              <span><i className="guide-dot done" /> DONE · 완료</span>
+              <span><i className="guide-dot error" /> ERROR · 확인 필요</span>
+            </div>
+            <p>직원 방을 누르면 왼쪽 Inspector에서 현재 업무와 최근 완료 업무를 확인할 수 있습니다.</p>
+          </div>
         </section>
 
         <CeoCommand busy={busy} submitting={submitting} onSubmit={start} />
