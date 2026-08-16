@@ -5,6 +5,7 @@ from data.portfolio_monitor import get_live_portfolio_snapshots
 from departments.monitoring import run_daily_monitoring
 from departments.opportunity import run_opportunity_scout
 from executive.daily_cio import run_daily_cio_decision
+from operations.approval_store import APPROVAL_STORE
 from operations.change_detector import compare_portfolio_snapshots
 from operations.models import OpportunityScoutReport
 from operations.run_store import RUN_STORE
@@ -146,6 +147,18 @@ def run_daily_operations(
                 "Daily Operations · CEO 보고서 작성",
             )
 
+        approval: dict[str, object] | None = None
+        if cio_decision.escalation != "NONE" or cio_decision.ceo_action_required:
+            approval = APPROVAL_STORE.create_from_cio(
+                run_id=run_id,
+                category=cio_decision.escalation,
+                summary=cio_decision.summary,
+                reasons=cio_decision.reasons,
+                affected_tickers=cio_decision.affected_tickers,
+                recommended_next_step=cio_decision.recommended_next_step,
+                briefing=briefing,
+            )
+
         completed_at = _now_iso()
         RUN_STORE.complete_run(
             run_id=run_id,
@@ -167,6 +180,7 @@ def run_daily_operations(
             "opportunities": opportunities.model_dump(),
             "cio": cio_decision.model_dump(),
             "briefing": briefing,
+            "approval": approval,
         }
 
     except Exception as exc:
