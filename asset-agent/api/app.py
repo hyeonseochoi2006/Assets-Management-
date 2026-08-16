@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from api.job_store import JOB_STORE
-from api.service import ActiveJobError, start_job
+from api.service import ActiveJobError, start_daily_operations, start_job
+from operations.run_store import RUN_STORE
 
 
 class JobRequest(BaseModel):
@@ -18,7 +19,7 @@ app = FastAPI(
         "Read-only bridge between the future React/3D HQ and the existing "
         "Python investment-agent company. This API does not place brokerage orders."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
@@ -62,7 +63,7 @@ def create_job(request: JobRequest) -> dict[str, object]:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "message": "Another CEO job is already running.",
+                "message": "Another job is already running.",
                 "active_job_id": exc.job_id,
             },
         ) from exc
@@ -72,6 +73,39 @@ def create_job(request: JobRequest) -> dict[str, object]:
         "poll_path": f"/api/v1/jobs/{job['job_id']}",
         "hq_state_path": "/api/v1/hq/state",
     }
+
+
+@app.post("/api/v1/operations/daily", status_code=status.HTTP_202_ACCEPTED)
+def create_daily_operations_job() -> dict[str, object]:
+    """Manually start one SYSTEM Daily Operations cycle for validation."""
+    try:
+        job = start_daily_operations()
+    except ActiveJobError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Another job is already running.",
+                "active_job_id": exc.job_id,
+            },
+        ) from exc
+
+    return {
+        **job,
+        "poll_path": f"/api/v1/jobs/{job['job_id']}",
+        "latest_daily_path": "/api/v1/operations/daily/latest",
+        "hq_state_path": "/api/v1/hq/state",
+    }
+
+
+@app.get("/api/v1/operations/daily/latest")
+def get_latest_daily_operations() -> dict[str, object]:
+    latest = RUN_STORE.latest_run()
+    if latest is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="no Daily Operations run has been recorded yet",
+        )
+    return latest
 
 
 @app.get("/api/v1/jobs/{job_id}")
