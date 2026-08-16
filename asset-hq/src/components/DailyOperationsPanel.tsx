@@ -110,8 +110,12 @@ export function DailyOperationsPanel() {
             <div className="daily-summary-meta">
               <span>포트폴리오 변화 {latest.change_count}</span>
               <span>중요 Finding {latest.finding_count}</span>
+              <span>기회 후보 {latest.opportunity_count}</span>
+              {latest.opportunity_tickers.length > 0 && (
+                <span>후보 {latest.opportunity_tickers.join(', ')}</span>
+              )}
               {latest.affected_tickers.length > 0 && (
-                <span>관련 종목 {latest.affected_tickers.join(', ')}</span>
+                <span>CEO 관련 종목 {latest.affected_tickers.join(', ')}</span>
               )}
             </div>
           </div>
@@ -126,6 +130,9 @@ export function DailyOperationsPanel() {
               <div>
                 <strong>{formatTime(run.completed_at ?? run.started_at)}</strong>
                 <span>{run.summary ?? run.error ?? '처리 중'}</span>
+                {run.opportunity_count > 0 && (
+                  <span>Research candidates: {run.opportunity_tickers.join(', ')}</span>
+                )}
               </div>
               <div className="daily-history-right">
                 <span>{escalationLabel(run)}</span>
