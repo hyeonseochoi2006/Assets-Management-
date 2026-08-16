@@ -4,11 +4,21 @@ import type { Group } from 'three'
 
 import type { AgentName, AgentState } from '../types'
 import type { Vec3 } from './agentPositions'
-import type { AgentTravelRequest } from './officeNavigation'
+import {
+  animationForMachineState,
+  SIT_DOWN_SECONDS,
+  STAND_UP_SECONDS,
+  transitionCharacterState,
+  type CharacterMachineEvent,
+  type CharacterMachineState,
+} from './CharacterStateMachine'
 import {
   GLTFCharacter3D,
   type CharacterAnimation,
 } from './characters/GLTFCharacter3D'
+import { findOfficePath } from './OfficeNavMesh'
+import { getOfficePoiPosition } from './OfficePOI'
+import type { AgentTravelRequest } from './officeNavigation'
 
 interface AgentMovement3DProps {
   agent: AgentName
@@ -17,8 +27,6 @@ interface AgentMovement3DProps {
   travelRequest: AgentTravelRequest | null
   onSelect: (agent: AgentName) => void
 }
-
-type TravelPhase = 'HOME' | 'OUTBOUND' | 'PAUSE' | 'RETURNING'
 
 const WALK_SPEED = 2.35
 const ARRIVAL_DISTANCE = 0.055
@@ -31,59 +39,101 @@ export function AgentMovement3D({
   onSelect,
 }: AgentMovement3DProps) {
   const groupRef = useRef<Group>(null)
-  const phaseRef = useRef<TravelPhase>('HOME')
+  const machineStateRef = useRef<CharacterMachineState>('HOME')
+  const stateElapsedRef = useRef(0)
   const activeTravelIdRef = useRef<number | null>(null)
+  const activeTravelRef = useRef<AgentTravelRequest | null>(null)
   const routeRef = useRef<Vec3[]>([])
   const routeIndexRef = useRef(0)
-  const pauseUntilRef = useRef(0)
   const [animation, setAnimation] = useState<CharacterAnimation | undefined>(undefined)
 
+  const dispatchMachineEvent = (event: CharacterMachineEvent) => {
+    const current = machineStateRef.current
+    const next = transitionCharacterState(current, event)
+    if (next === current) return current
+
+    machineStateRef.current = next
+    stateElapsedRef.current = 0
+    setAnimation(animationForMachineState(next))
+    return next
+  }
+
   useEffect(() => {
-    if (!groupRef.current || phaseRef.current !== 'HOME') return
+    if (!groupRef.current || machineStateRef.current !== 'HOME') return
     groupRef.current.position.set(home[0], home[1], home[2])
+    groupRef.current.rotation.y = 0
   }, [home])
 
   useEffect(() => {
     if (!travelRequest || travelRequest.from !== agent) return
     if (activeTravelIdRef.current === travelRequest.id) return
+    if (machineStateRef.current !== 'HOME') return
 
     activeTravelIdRef.current = travelRequest.id
-    routeRef.current = [...travelRequest.route]
+    activeTravelRef.current = travelRequest
+    routeRef.current = []
     routeIndexRef.current = 0
-    phaseRef.current = 'OUTBOUND'
-    setAnimation('Walk')
+    dispatchMachineEvent('TRAVEL_REQUEST')
   }, [agent, travelRequest])
 
-  useFrame(({ clock }, delta) => {
+  useFrame((_, delta) => {
     const group = groupRef.current
     if (!group) return
 
-    const phase = phaseRef.current
+    stateElapsedRef.current += delta
+    const machineState = machineStateRef.current
 
-    if (phase === 'PAUSE') {
-      if (clock.elapsedTime >= pauseUntilRef.current) {
-        const outbound = travelRequest?.from === agent ? travelRequest.route : routeRef.current
-        routeRef.current = [...outbound].slice(0, -1).reverse()
-        routeRef.current.push(home)
+    if (machineState === 'STANDING_UP') {
+      if (stateElapsedRef.current >= STAND_UP_SECONDS) {
+        const request = activeTravelRef.current
+        if (!request) {
+          machineStateRef.current = 'HOME'
+          setAnimation(undefined)
+          return
+        }
+
+        const target = getOfficePoiPosition(request.targetPoiId)
+        const start: Vec3 = [group.position.x, group.position.y, group.position.z]
+        routeRef.current = findOfficePath(start, target)
         routeIndexRef.current = 0
-        phaseRef.current = 'RETURNING'
-        setAnimation('Walk')
+        dispatchMachineEvent('STAND_COMPLETE')
       }
       return
     }
 
-    if (phase !== 'OUTBOUND' && phase !== 'RETURNING') return
+    if (machineState === 'TALKING') {
+      const pauseSeconds = activeTravelRef.current?.pauseSeconds ?? 1.15
+      if (stateElapsedRef.current >= pauseSeconds) {
+        const start: Vec3 = [group.position.x, group.position.y, group.position.z]
+        routeRef.current = findOfficePath(start, home)
+        routeIndexRef.current = 0
+        dispatchMachineEvent('PAUSE_COMPLETE')
+      }
+      return
+    }
+
+    if (machineState === 'SITTING_DOWN') {
+      if (stateElapsedRef.current >= SIT_DOWN_SECONDS) {
+        group.position.set(home[0], home[1], home[2])
+        group.rotation.y = 0
+        activeTravelRef.current = null
+        routeRef.current = []
+        routeIndexRef.current = 0
+        dispatchMachineEvent('SIT_COMPLETE')
+      }
+      return
+    }
+
+    if (machineState !== 'WALKING_TO_POI' && machineState !== 'RETURNING') return
 
     const target = routeRef.current[routeIndexRef.current]
     if (!target) {
-      if (phase === 'OUTBOUND') {
-        phaseRef.current = 'PAUSE'
-        pauseUntilRef.current = clock.elapsedTime + (travelRequest?.pauseSeconds ?? 1.15)
-        setAnimation('Talking')
+      if (machineState === 'WALKING_TO_POI') {
+        dispatchMachineEvent('ARRIVE_DESTINATION')
       } else {
-        phaseRef.current = 'HOME'
         group.position.set(home[0], home[1], home[2])
-        setAnimation(undefined)
+        group.rotation.y = 0
+        dispatchMachineEvent('ARRIVE_HOME')
       }
       return
     }
