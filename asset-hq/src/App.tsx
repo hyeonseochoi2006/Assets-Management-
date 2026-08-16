@@ -5,6 +5,7 @@ import { CeoCommand } from './components/CeoCommand'
 import { OfficeFloor } from './components/OfficeFloor'
 import { ReportPanel } from './components/ReportPanel'
 import { Workflow } from './components/Workflow'
+import { OfficeWorld } from './3d/OfficeWorld'
 import { useJobStatus } from './hooks/useJobStatus'
 import type { AgentMap, AgentName, HealthResponse } from './types'
 import { PIPELINE_FALLBACK } from './types'
@@ -18,11 +19,14 @@ const EMPTY_AGENTS: AgentMap = {
   Briefing: { status: 'IDLE', task: '대기 중', last_completed: '아직 완료된 업무 없음' },
 }
 
+type HQView = '3d' | 'dashboard'
+
 export default function App() {
   const { job, hqState, submitting, error, start } = useJobStatus()
   const [selectedAgent, setSelectedAgent] = useState<AgentName>('CIO')
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [healthError, setHealthError] = useState(false)
+  const [view, setView] = useState<HQView>('3d')
 
   useEffect(() => {
     getHealth()
@@ -62,14 +66,32 @@ export default function App() {
       )}
 
       <main>
+        <div className="view-switcher" role="group" aria-label="HQ view">
+          <button type="button" className={view === '3d' ? 'active' : ''} onClick={() => setView('3d')}>
+            3D HQ
+          </button>
+          <button type="button" className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>
+            Dashboard
+          </button>
+        </div>
+
         <Workflow order={pipelineOrder} agents={agents} />
 
-        <OfficeFloor
-          agents={agents}
-          pipelineOrder={pipelineOrder}
-          selectedAgent={selectedAgent}
-          onSelectAgent={setSelectedAgent}
-        />
+        {view === '3d' ? (
+          <OfficeWorld
+            agents={agents}
+            pipelineOrder={pipelineOrder}
+            selectedAgent={selectedAgent}
+            onSelectAgent={setSelectedAgent}
+          />
+        ) : (
+          <OfficeFloor
+            agents={agents}
+            pipelineOrder={pipelineOrder}
+            selectedAgent={selectedAgent}
+            onSelectAgent={setSelectedAgent}
+          />
+        )}
 
         <section className="office-inspector-row">
           <aside className="inspector-panel">
@@ -100,7 +122,7 @@ export default function App() {
               <span><i className="guide-dot done" /> DONE · 완료</span>
               <span><i className="guide-dot error" /> ERROR · 확인 필요</span>
             </div>
-            <p>직원 방을 누르면 왼쪽 Inspector에서 현재 업무와 최근 완료 업무를 확인할 수 있습니다.</p>
+            <p>3D 직원 또는 아래 직원 이름을 누르면 Inspector에서 현재 업무를 확인할 수 있습니다.</p>
           </div>
         </section>
 
