@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from agents import Agent, Runner
 
 from data.portfolio_monitor import get_live_portfolio_snapshot
@@ -6,6 +8,9 @@ from departments.execution import run_execution_assessment
 from departments.portfolio import run_portfolio_assessment
 from departments.risk import run_risk_assessment
 from policies.investment_policy import EXECUTION_CONSTRAINTS, RISK_POLICY
+
+
+PipelineStatusCallback = Callable[[str, str], None]
 
 
 cio_agent = Agent(
@@ -57,44 +62,80 @@ but must never issue or execute a final BUY order.
 )
 
 
+def _emit_status(
+    status_callback: PipelineStatusCallback | None,
+    agent_name: str,
+    status: str,
+) -> None:
+    if status_callback is not None:
+        status_callback(agent_name, status)
+
+
 def run_cio_pipeline(
     ticker: str,
     portfolio_snapshot: str | None = None,
+    status_callback: PipelineStatusCallback | None = None,
 ) -> tuple[str, str]:
     """Run the full read-only investment decision-support pipeline."""
     if portfolio_snapshot is None:
         portfolio_snapshot = get_live_portfolio_snapshot()
 
-    analysis_report = run_analysis(ticker)
+    _emit_status(status_callback, "Analysis", "WORKING")
+    try:
+        analysis_report = run_analysis(ticker)
+    except Exception:
+        _emit_status(status_callback, "Analysis", "ERROR")
+        raise
+    _emit_status(status_callback, "Analysis", "DONE")
 
-    portfolio_output = run_portfolio_assessment(
-        ticker,
-        analysis_report,
-        portfolio_snapshot,
-        RISK_POLICY,
-    )
+    _emit_status(status_callback, "Portfolio", "WORKING")
+    try:
+        portfolio_output = run_portfolio_assessment(
+            ticker,
+            analysis_report,
+            portfolio_snapshot,
+            RISK_POLICY,
+        )
+    except Exception:
+        _emit_status(status_callback, "Portfolio", "ERROR")
+        raise
     portfolio_report = portfolio_output.model_dump_json(indent=2)
+    _emit_status(status_callback, "Portfolio", "DONE")
 
-    risk_output = run_risk_assessment(
-        ticker,
-        analysis_report,
-        portfolio_report,
-        RISK_POLICY,
-    )
+    _emit_status(status_callback, "Risk", "WORKING")
+    try:
+        risk_output = run_risk_assessment(
+            ticker,
+            analysis_report,
+            portfolio_report,
+            RISK_POLICY,
+        )
+    except Exception:
+        _emit_status(status_callback, "Risk", "ERROR")
+        raise
     risk_report = risk_output.model_dump_json(indent=2)
+    _emit_status(status_callback, "Risk", "DONE")
 
-    execution_output = run_execution_assessment(
-        ticker,
-        analysis_report,
-        portfolio_report,
-        risk_report,
-        EXECUTION_CONSTRAINTS,
-    )
+    _emit_status(status_callback, "Execution", "WORKING")
+    try:
+        execution_output = run_execution_assessment(
+            ticker,
+            analysis_report,
+            portfolio_report,
+            risk_report,
+            EXECUTION_CONSTRAINTS,
+        )
+    except Exception:
+        _emit_status(status_callback, "Execution", "ERROR")
+        raise
     execution_report = execution_output.model_dump_json(indent=2)
+    _emit_status(status_callback, "Execution", "DONE")
 
-    cio_result = Runner.run_sync(
-        cio_agent,
-        f"""
+    _emit_status(status_callback, "CIO", "WORKING")
+    try:
+        cio_result = Runner.run_sync(
+            cio_agent,
+            f"""
 CANDIDATE:
 {ticker}
 
@@ -121,6 +162,10 @@ Do not make the final buy decision.
 Do not invent numeric investor limits.
 If numeric position limits are not configured, Suggested position range must be NOT CONFIGURED — CEO POLICY REQUIRED.
 """,
-    )
+        )
+    except Exception:
+        _emit_status(status_callback, "CIO", "ERROR")
+        raise
+    _emit_status(status_callback, "CIO", "DONE")
 
     return portfolio_snapshot, cio_result.final_output
