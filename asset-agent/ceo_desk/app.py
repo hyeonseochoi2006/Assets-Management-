@@ -11,6 +11,18 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from ceo_desk.command_router import CEOAction, route_command
+from ceo_desk.hq import (
+    AGENT_ORDER,
+    ensure_hq_state,
+    mark_working_agents_error,
+    refresh_agent_card,
+    refresh_all_agent_cards,
+    render_agent_inspector,
+    render_hq_dashboard,
+    reset_hq_state,
+    set_agent_status,
+    task_for,
+)
 from data.portfolio_monitor import get_live_portfolio_snapshot
 from departments.portfolio import run_portfolio_review
 from executive.cio import run_cio_pipeline
@@ -83,6 +95,7 @@ def _help_text() -> str:
 - `내 포트폴리오 점검해`
 
 종목 분석은 **Analysis → Portfolio → Risk → Execution → CIO → Briefing** 순서로 진행됩니다.
+위의 **Asset Management HQ**에서 각 Agent의 실제 진행 상태를 볼 수 있습니다.
 내부 부서는 영어로 작업할 수 있지만 CEO 최종 보고서는 한국어로 제공됩니다.
 실제 주문은 실행하지 않으며 최종 투자 결정은 CEO가 합니다.
 """
@@ -96,6 +109,7 @@ def _render_message(message: dict[str, str]) -> None:
             st.markdown(message["content"])
 
 
+ensure_hq_state()
 branch = _runtime_branch()
 mode = _runtime_mode(branch)
 snapshot = _portfolio_snapshot()
@@ -110,11 +124,18 @@ st.caption("CEO가 자연어로 지시하면 CIO와 각 투자 부서가 업무�
 market_value = _snapshot_value(snapshot, "Market Value")
 profit_loss = _snapshot_value(snapshot, "Profit/Loss")
 
-metric_left, metric_right = st.columns(2)
+metric_left, metric_middle, metric_right = st.columns(3)
 with metric_left:
     st.metric("Portfolio Market Value", market_value)
-with metric_right:
+with metric_middle:
     st.metric("Portfolio P/L", profit_loss)
+with metric_right:
+    st.metric("Agent Team", f"{len(AGENT_ORDER)} configured")
+
+st.divider()
+hq_slots = render_hq_dashboard()
+render_agent_inspector()
+st.divider()
 
 with st.sidebar:
     st.header("CEO Control")
@@ -131,6 +152,7 @@ with st.sidebar:
 
     st.divider()
     st.caption("Supported now")
+    st.write("• Agent HQ 실시간 상태")
     st.write("• 회사 분석")
     st.write("• 실제 포트폴리오 조회")
     st.write("• 전체 포트폴리오 점검")
@@ -161,40 +183,72 @@ if prompt:
 
     command = route_command(prompt)
     current_snapshot = _portfolio_snapshot()
+    reset_hq_state()
+    refresh_all_agent_cards(hq_slots)
 
     with st.chat_message("assistant"):
         try:
             if command.action == CEOAction.SHOW_PORTFOLIO:
+                task = "현재 Toss 포트폴리오 표시"
+                set_agent_status("Portfolio", "DONE", task)
+                refresh_agent_card(hq_slots, "Portfolio")
                 response = current_snapshot
                 kind = "portfolio"
                 st.code(response, language=None)
 
             elif command.action == CEOAction.REVIEW_PORTFOLIO:
+                portfolio_task = task_for("Portfolio", "전체 포트폴리오")
+                set_agent_status("Portfolio", "WORKING", portfolio_task)
+                refresh_agent_card(hq_slots, "Portfolio")
+
                 with st.spinner("Portfolio 부서 점검 → 한국어 CEO 브리핑 작성 중..."):
                     review = run_portfolio_review(current_snapshot)
+                    set_agent_status("Portfolio", "DONE", portfolio_task)
+                    refresh_agent_card(hq_slots, "Portfolio")
+
+                    briefing_task = task_for("Briefing", "전체 포트폴리오")
+                    set_agent_status("Briefing", "WORKING", briefing_task)
+                    refresh_agent_card(hq_slots, "Briefing")
                     response = run_korean_ceo_brief(
                         source_report=review,
                         report_type="WHOLE_PORTFOLIO_REVIEW",
                         portfolio_snapshot=current_snapshot,
                     )
+                    set_agent_status("Briefing", "DONE", briefing_task)
+                    refresh_agent_card(hq_slots, "Briefing")
+
                 kind = "markdown"
                 st.markdown(response)
 
             elif command.action == CEOAction.ANALYZE_COMPANY and command.ticker:
                 ticker = command.ticker
+
+                def update_pipeline_status(agent: str, status: str) -> None:
+                    task = task_for(agent, ticker)
+                    set_agent_status(agent, status, task)
+                    refresh_agent_card(hq_slots, agent)
+
                 with st.spinner(
                     f"{ticker}: Analysis → Portfolio → Risk → Execution → CIO → Briefing 진행 중..."
                 ):
                     _, cio_report = run_cio_pipeline(
                         ticker,
                         portfolio_snapshot=current_snapshot,
+                        status_callback=update_pipeline_status,
                     )
+
+                    briefing_task = task_for("Briefing", ticker)
+                    set_agent_status("Briefing", "WORKING", briefing_task)
+                    refresh_agent_card(hq_slots, "Briefing")
                     response = run_korean_ceo_brief(
                         source_report=cio_report,
                         report_type="COMPANY_ANALYSIS",
                         ticker=ticker,
                         portfolio_snapshot=current_snapshot,
                     )
+                    set_agent_status("Briefing", "DONE", briefing_task)
+                    refresh_agent_card(hq_slots, "Briefing")
+
                 kind = "markdown"
                 st.markdown(response)
 
@@ -213,6 +267,8 @@ if prompt:
                 st.markdown(response)
 
         except Exception as exc:
+            mark_working_agents_error()
+            refresh_all_agent_cards(hq_slots)
             response = (
                 "### CEO Desk 작업 실패\n\n"
                 f"`{type(exc).__name__}`: {exc}\n\n"
