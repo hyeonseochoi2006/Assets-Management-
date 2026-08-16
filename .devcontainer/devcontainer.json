@@ -3,6 +3,7 @@
   "image": "mcr.microsoft.com/devcontainers/universal:2",
   "postCreateCommand": "python -m pip install -r asset-agent/requirements.txt",
   "postStartCommand": "bash .devcontainer/start-ceo.sh",
+  "postAttachCommand": "bash .devcontainer/start-ceo.sh",
   "forwardPorts": [8501],
   "portsAttributes": {
     "8501": {
