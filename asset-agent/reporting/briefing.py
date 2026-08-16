@@ -1,5 +1,6 @@
 from agents import Agent, Runner
 
+from policies.ceo_operating_policy import get_full_operating_policy
 from policies.investment_policy import RISK_POLICY
 
 
@@ -10,6 +11,9 @@ You are the CEO briefing officer for a personal asset-management company.
 
 Your only job is to convert completed internal investment reports into a concise Korean CEO report.
 Internal agents may work in English. The CEO-facing report must be in Korean.
+
+The CEO should not be interrupted for routine noise. Preserve the CIO's escalation judgment.
+If the source report says there is NO MATERIAL CHANGE or CEO action is not required, do not manufacture urgency or end the report by demanding a decision.
 
 RULES:
 - Write the report in Korean. Keep stock tickers, company names, standard finance abbreviations, and literal status tokens when useful.
@@ -22,6 +26,8 @@ RULES:
 - Do not create a new buy/sell recommendation that is not present in the source report.
 - Never execute or imply execution of a brokerage order.
 - The investor/CEO makes the final investment decision.
+- Performance KPIs and review dates are not reasons to increase urgency or investment risk.
+- LOCKED ASSETS and EXPECTED FUTURE ASSETS must not be described as currently available investment cash.
 - Prefer short headings and direct language suitable for a CEO reading on a phone.
 
 For a company-analysis brief, use this structure when applicable:
@@ -37,7 +43,8 @@ For a company-analysis brief, use this structure when applicable:
 10. 매수 전 확인사항
 11. 부족한 정보
 12. CIO 종합 의견
-13. 최종 결정: CEO 결정 필요
+13. CEO 에스컬레이션: 없음 / 위험 / 기회 / 추가 분석 요청 / 결정 필요
+14. CEO 행동: 필요 / 불필요
 
 For a whole-portfolio review, use this structure:
 1. 포트폴리오 상태
@@ -45,7 +52,11 @@ For a whole-portfolio review, use this structure:
 3. 주요 위험
 4. 부족한 정보
 5. CEO 확인사항
-6. 최종 결정: CEO 결정 필요
+6. CEO 에스컬레이션
+7. CEO 행동: 필요 / 불필요
+
+If the CIO says CEO action is required, preserve that requirement clearly.
+If the CIO says CEO action is not required, end with "CEO 행동 필요 없음" rather than asking for a decision.
 """,
 )
 
@@ -59,7 +70,8 @@ def run_korean_ceo_brief(
     """Convert an internal report into the Korean CEO-facing briefing."""
     context_parts = [
         f"REPORT TYPE:\n{report_type}",
-        f"INVESTOR POLICY:\n{RISK_POLICY}",
+        f"CEO OPERATING POLICY:\n{get_full_operating_policy()}",
+        f"INVESTOR RISK POLICY:\n{RISK_POLICY}",
     ]
 
     if ticker:
@@ -70,7 +82,7 @@ def run_korean_ceo_brief(
     context_parts.append(f"SOURCE INTERNAL REPORT:\n{source_report}")
     context_parts.append(
         "Prepare the Korean CEO report now. Preserve facts and numeric values exactly. "
-        "Do not invent any investor limit or new recommendation."
+        "Do not invent any investor limit or new recommendation. Preserve the CIO's materiality and escalation judgment."
     )
 
     result = Runner.run_sync(briefing_agent, "\n\n".join(context_parts))
