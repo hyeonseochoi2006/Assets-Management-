@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { getHealth } from './api/hqApi'
 import { CeoCommand } from './components/CeoCommand'
+import { DailyOperationsPanel } from './components/DailyOperationsPanel'
 import { OfficeFloor } from './components/OfficeFloor'
 import { ReportPanel } from './components/ReportPanel'
 import { Workflow } from './components/Workflow'
@@ -48,7 +49,7 @@ export default function App() {
         <div>
           <div className="eyebrow">PRIVATE INVESTMENT OPERATING SYSTEM</div>
           <h1>ASSET MANAGEMENT HQ</h1>
-          <p>CEO 명령을 실제 AI 부서가 순서대로 처리합니다.</p>
+          <p>CEO 명령과 회사의 자율 Daily Operations를 실제 AI 부서가 처리합니다.</p>
         </div>
         <div className="system-status">
           <span className={`connection-dot ${healthError ? 'offline' : health ? 'online' : 'checking'}`} />
@@ -76,6 +77,7 @@ export default function App() {
         </div>
 
         <Workflow order={pipelineOrder} agents={agents} />
+        <DailyOperationsPanel />
 
         {view === '3d' ? (
           <OfficeWorld
