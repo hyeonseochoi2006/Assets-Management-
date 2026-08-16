@@ -3,7 +3,7 @@ from agents import Agent, Runner
 from departments.bear_case import run_bear_case
 from departments.data_auditor import run_data_audit
 from research.evidence_pack import build_evidence_pack
-from research.models import AnalysisLeadAssessment, DataAuditReport
+from research.models import AnalysisLeadAssessment, DataAuditReport, EvidencePack
 
 
 analysis_lead_agent = Agent(
@@ -55,7 +55,11 @@ Do not make a BUY/SELL decision.
 )
 
 
-def _run_analysis_lead(ticker: str, evidence_pack: object, audit: DataAuditReport) -> AnalysisLeadAssessment:
+def _run_analysis_lead(
+    ticker: str,
+    evidence_pack: EvidencePack,
+    audit: DataAuditReport,
+) -> AnalysisLeadAssessment:
     result = Runner.run_sync(
         analysis_lead_agent,
         f"""
