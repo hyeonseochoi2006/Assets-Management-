@@ -11,19 +11,22 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 import type { AgentName, AgentStatus } from '../../types'
 
+export type CharacterAnimation = 'Idle' | 'Walk' | 'Sit' | 'Typing' | 'Talking'
+
 interface GLTFCharacter3DProps {
   agent: AgentName
   status: AgentStatus
+  animation?: CharacterAnimation
 }
 
-const STATUS_CLIP: Record<AgentStatus, string> = {
+const STATUS_CLIP: Record<AgentStatus, CharacterAnimation> = {
   IDLE: 'Sit',
   WORKING: 'Typing',
   DONE: 'Talking',
   ERROR: 'Talking',
 }
 
-export function GLTFCharacter3D({ agent, status }: GLTFCharacter3DProps) {
+export function GLTFCharacter3D({ agent, status, animation }: GLTFCharacter3DProps) {
   const fileName = `${agent.toLowerCase()}.glb`
   const gltf = useLoader(GLTFLoader, `/models/characters/${fileName}`)
 
@@ -45,7 +48,7 @@ export function GLTFCharacter3D({ agent, status }: GLTFCharacter3DProps) {
   })
 
   useEffect(() => {
-    const clipName = STATUS_CLIP[status]
+    const clipName = animation ?? STATUS_CLIP[status]
     const clip = AnimationClip.findByName(gltf.animations, clipName)
     if (!clip) return
 
@@ -67,7 +70,7 @@ export function GLTFCharacter3D({ agent, status }: GLTFCharacter3DProps) {
     return () => {
       action.fadeOut(0.12)
     }
-  }, [gltf.animations, mixer, scene, status])
+  }, [animation, gltf.animations, mixer, scene, status])
 
   useEffect(
     () => () => {
