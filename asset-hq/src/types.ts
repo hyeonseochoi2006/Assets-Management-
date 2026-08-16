@@ -8,6 +8,12 @@ export type AgentName =
 
 export type AgentStatus = 'IDLE' | 'WORKING' | 'DONE' | 'ERROR'
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+export type DailyEscalation =
+  | 'NONE'
+  | 'RISK'
+  | 'OPPORTUNITY'
+  | 'ANALYSIS_REQUEST'
+  | 'DECISION'
 
 export interface AgentState {
   status: AgentStatus
@@ -51,6 +57,26 @@ export interface HealthResponse {
   service: string
   mode: string
   branch: string
+}
+
+export interface DailyRunSummary {
+  run_id: string
+  started_at: string
+  completed_at: string | null
+  status: JobStatus
+  material_change: boolean | null
+  escalation: DailyEscalation | null
+  ceo_action_required: boolean | null
+  summary: string | null
+  affected_tickers: string[]
+  change_count: number
+  finding_count: number
+  has_briefing: boolean
+  error: string | null
+}
+
+export interface DailyHistoryResponse {
+  runs: DailyRunSummary[]
 }
 
 export const AGENT_NAMES: AgentName[] = [
