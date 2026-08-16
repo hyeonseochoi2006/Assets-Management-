@@ -70,11 +70,11 @@ export function Agent3D({ agent, state, position, selected, onSelect }: Agent3DP
           <meshStandardMaterial color={bodyColor[agent]} roughness={0.7} />
         </mesh>
         <mesh ref={leftArmRef} position={[-0.38, 1.08, -0.03]} rotation={[-0.45, 0, 0.12]} castShadow>
-          <capsuleGeometry args={[0.09, 0.5, 6, 12]} />
+          <cylinderGeometry args={[0.085, 0.085, 0.58, 12]} />
           <meshStandardMaterial color={bodyColor[agent]} />
         </mesh>
         <mesh ref={rightArmRef} position={[0.38, 1.08, -0.03]} rotation={[-0.45, 0, -0.12]} castShadow>
-          <capsuleGeometry args={[0.09, 0.5, 6, 12]} />
+          <cylinderGeometry args={[0.085, 0.085, 0.58, 12]} />
           <meshStandardMaterial color={bodyColor[agent]} />
         </mesh>
         <mesh position={[0, 0.55, 0.18]} castShadow>
