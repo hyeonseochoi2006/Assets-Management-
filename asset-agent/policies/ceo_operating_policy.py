@@ -14,8 +14,10 @@ MISSION
 - AI advises, verifies, and proposes. The CEO retains the final investment decision.
 
 PERFORMANCE OBJECTIVES
+- Phase 1 operating window: 2026-09-01 through 2026-12-31 (four months).
 - Phase 1 review date: 2026-12-31.
   Purpose: verify that the AI investment company operates correctly and follows policy.
+- Phase 2 operating window: 2027-01-01 through 2027-04-30 (four months).
 - Phase 2 review date: 2027-04-30.
   Purpose: evaluate whether the system is managing and growing assets effectively after Phase 1 improvements.
 - Investment-profit KPI through the Phase 2 review: KRW 1,000,000.
@@ -128,11 +130,13 @@ WEEKLY INVESTMENT COMMITTEE
 - Re-check portfolio thesis quality, portfolio-wide risk, watchlist ranking, strongest opportunity, largest risk, errors in prior judgments, and important events for the coming week.
 - NO TRADE is an acceptable and normal outcome.
 
+PHASE 1 — 2026-09-01 TO 2026-12-31
 PHASE 1 REVIEW — 2026-12-31
 - Primary question: Is the AI investment company operating correctly?
 - Evaluate policy compliance, data accuracy, risk detection, opportunity filtering, unnecessary AI/token use, unnecessary trading pressure, quality of CEO escalation, investment profit/loss, and operational failures.
 - Use findings to improve Phase 2. Do not judge long-term investment skill from four months of returns alone.
 
+PHASE 2 — 2027-01-01 TO 2027-04-30
 PHASE 2 REVIEW — 2027-04-30
 - Primary question: Is the system managing and growing assets effectively after Phase 1 improvements?
 - Evaluate cumulative contributions, investment profit/loss, return where valid, total assets, drawdown/loss experience, portfolio risk, good and bad decisions, Agent performance, and progress toward the long-term KRW 100,000,000 objective.
