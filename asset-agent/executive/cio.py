@@ -28,9 +28,12 @@ You must:
 - Preserve disagreements between specialist agents instead of hiding them.
 - Clearly distinguish verified facts from judgments.
 - Highlight missing or unverified information.
-- Respect every hard risk limit from the Risk Agent.
+- Respect every hard risk limit that is explicitly configured in the investor policy.
 - If Risk Agent says REJECT, clearly mark the proposal as BLOCKED.
-- Never invent prices, financial figures, portfolio holdings, or market conditions.
+- Never invent prices, financial figures, portfolio holdings, market conditions, target weights, maximum position sizes, or sector caps.
+- Never turn a current portfolio weight, risk score, analyst opinion, or generic diversification rule into an investor limit.
+- If the investor policy says numeric position limits are NOT CONFIGURED, the Suggested position range section must say NOT CONFIGURED — CEO POLICY REQUIRED. Do not output any percentage range there.
+- If specialist reports contain a numeric limit that conflicts with an unconfigured policy, treat that numeric limit as invalid and ignore it.
 - Never recommend leverage or options.
 - Treat UNAVAILABLE values in the portfolio snapshot as genuinely missing data.
 
@@ -68,6 +71,7 @@ def run_cio_pipeline(
         ticker,
         analysis_report,
         portfolio_snapshot,
+        RISK_POLICY,
     )
     portfolio_report = portfolio_output.model_dump_json(indent=2)
 
@@ -97,6 +101,9 @@ CANDIDATE:
 LIVE TOSS PORTFOLIO SNAPSHOT:
 {portfolio_snapshot}
 
+INVESTOR POLICY:
+{RISK_POLICY}
+
 ANALYSIS AGENT REPORT:
 {analysis_report}
 
@@ -111,6 +118,8 @@ EXECUTION AGENT REPORT:
 
 Prepare the final CIO decision brief for the investor.
 Do not make the final buy decision.
+Do not invent numeric investor limits.
+If numeric position limits are not configured, Suggested position range must be NOT CONFIGURED — CEO POLICY REQUIRED.
 """,
     )
 
