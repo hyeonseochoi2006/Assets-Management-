@@ -2,3 +2,5 @@ openai-agents
 pydantic
 requests
 streamlit
+fastapi
+uvicorn
