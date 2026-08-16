@@ -1,6 +1,12 @@
 from agents import Agent, Runner
 
-from operations.models import ChangeSet, DailyCioDecision, MonitoringReport, PortfolioSnapshot
+from operations.models import (
+    ChangeSet,
+    DailyCioDecision,
+    MonitoringReport,
+    OpportunityScoutReport,
+    PortfolioSnapshot,
+)
 from policies.ceo_operating_policy import get_full_operating_policy
 from policies.investment_policy import RISK_POLICY
 
@@ -11,7 +17,7 @@ daily_cio_agent = Agent(
 You are the daily CIO gatekeeper for an autonomous personal asset-management company.
 
 Your job is NOT to perform a full company analysis and NOT to make the final investment decision.
-Your job is to decide whether today's routine monitoring contains something material enough to interrupt the CEO.
+Your job is to decide whether today's routine monitoring or opportunity scouting contains something material enough to interrupt the CEO.
 
 Possible escalation values:
 - NONE
@@ -28,6 +34,15 @@ INSTRUMENT IDENTITY RULES:
 - If unresolved identity prevents reliable monitoring, ANALYSIS_REQUEST may be appropriate. Use RISK only when there is separate verified evidence of material investment risk.
 - Do not escalate merely because a newly added identity field was absent from an older stored snapshot.
 
+OPPORTUNITY RULES:
+- Opportunity Scout results are RESEARCH CANDIDATES, not buy recommendations.
+- The CEO allowed investment market/security universe is NOT CONFIGURED, so never call a candidate approved, eligible, or actionable.
+- WATCHLIST candidates should normally remain internal and should not interrupt the CEO.
+- Consider OPPORTUNITY only when a CIO_REVIEW candidate has strong current evidence, meaningful potential relevance, sufficiently clear identity, and genuinely merits CEO awareness.
+- If a promising candidate needs deeper specialist work before it can be judged, ANALYSIS_REQUEST is more appropriate than pretending certainty.
+- An unresolved broker identity should not be escalated as an OPPORTUNITY unless the reason for escalation is specifically to resolve a material research ambiguity.
+- Do not force an opportunity escalation just because the Scout returned candidates.
+
 RULES:
 - NO MATERIAL CHANGE = DO NOT DISTURB CEO.
 - Routine price movement alone should not create urgency.
@@ -40,7 +55,7 @@ RULES:
 - Use DECISION only when an actual CEO investment or policy decision is required now.
 - Use RISK only for verified material risk, not ticker ambiguity or ordinary missing metadata by itself.
 - The CEO makes every final investment decision.
-- Keep affected_tickers limited to broker symbols genuinely related to the escalation.
+- Keep affected_tickers limited to symbols genuinely related to the escalation.
 """,
     output_type=DailyCioDecision,
 )
@@ -50,6 +65,7 @@ def run_daily_cio_decision(
     snapshot: PortfolioSnapshot,
     changes: ChangeSet,
     monitoring: MonitoringReport,
+    opportunities: OpportunityScoutReport,
 ) -> DailyCioDecision:
     result = Runner.run_sync(
         daily_cio_agent,
@@ -69,10 +85,14 @@ DETERMINISTIC CHANGE DETECTOR:
 DAILY MONITORING REPORT:
 {monitoring.model_dump_json(indent=2)}
 
+OPPORTUNITY SCOUT REPORT:
+{opportunities.model_dump_json(indent=2)}
+
 Decide whether the CEO should be interrupted today.
 Do not manufacture urgency.
 Do not make a final buy/sell decision.
 Do not turn unresolved ticker identity into a verified company-risk claim.
+Do not treat research candidates as approved investments.
 """,
     )
     return result.final_output
