@@ -141,17 +141,36 @@ def extract_symbols(holdings_payload: dict[str, Any]) -> list[str]:
     return symbols
 
 
+def _validate_symbol_batch(symbols: list[str], operation: str) -> None:
+    if len(symbols) > 200:
+        raise TossAPIError(
+            f"{operation} supports up to 200 symbols per request; got {len(symbols)}."
+        )
+
+
 def get_prices(access_token: str, symbols: list[str]) -> dict[str, Any]:
     if not symbols:
         return {"result": []}
 
-    if len(symbols) > 200:
-        raise TossAPIError(
-            f"Price lookup supports up to 200 symbols per request; got {len(symbols)}."
-        )
-
+    _validate_symbol_batch(symbols, "Price lookup")
     response = requests.get(
         f"{BASE_URL}/api/v1/prices",
+        headers=_auth_headers(access_token),
+        params={"symbols": ",".join(symbols)},
+        timeout=TIMEOUT_SECONDS,
+    )
+    _raise_for_api_error(response)
+    return response.json()
+
+
+def get_stocks(access_token: str, symbols: list[str]) -> dict[str, Any]:
+    """Fetch official Toss stock-master metadata for exact broker symbols."""
+    if not symbols:
+        return {"result": []}
+
+    _validate_symbol_batch(symbols, "Stock info lookup")
+    response = requests.get(
+        f"{BASE_URL}/api/v1/stocks",
         headers=_auth_headers(access_token),
         params={"symbols": ",".join(symbols)},
         timeout=TIMEOUT_SECONDS,
@@ -169,9 +188,22 @@ def get_live_portfolio() -> dict[str, Any]:
     symbols = extract_symbols(holdings_payload)
     prices_payload = get_prices(access_token, symbols)
 
+    stock_info_error: str | None = None
+    try:
+        stocks_payload = get_stocks(access_token, symbols)
+    except TossAPIError as exc:
+        # Identity enrichment must not erase an otherwise valid read-only
+        # portfolio snapshot. The resolver will mark every missing identity as
+        # UNRESOLVED and the Daily CIO will treat it as data quality, not as a
+        # guessed security identity.
+        stocks_payload = {"result": []}
+        stock_info_error = str(exc)
+
     return {
         "accountSeq": account_seq,
         "symbols": symbols,
         "holdings": holdings_payload,
         "prices": prices_payload,
+        "stocks": stocks_payload,
+        "stockInfoError": stock_info_error,
     }
