@@ -19,7 +19,7 @@ app = FastAPI(
         "Read-only bridge between the future React/3D HQ and the existing "
         "Python investment-agent company. This API does not place brokerage orders."
     ),
-    version="0.2.0",
+    version="0.3.0",
 )
 
 
@@ -106,6 +106,13 @@ def get_latest_daily_operations() -> dict[str, object]:
             detail="no Daily Operations run has been recorded yet",
         )
     return latest
+
+
+@app.get("/api/v1/operations/daily/history")
+def get_daily_operations_history() -> dict[str, object]:
+    return {
+        "runs": RUN_STORE.recent_run_summaries(7),
+    }
 
 
 @app.get("/api/v1/jobs/{job_id}")
