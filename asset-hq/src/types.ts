@@ -15,6 +15,15 @@ export type DailyEscalation =
   | 'ANALYSIS_REQUEST'
   | 'DECISION'
 
+export type ApprovalStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'DEFERRED'
+  | 'REJECTED'
+  | 'ACKNOWLEDGED'
+
+export type ApprovalDecision = Exclude<ApprovalStatus, 'PENDING'>
+
 export interface AgentState {
   status: AgentStatus
   task: string
@@ -79,6 +88,26 @@ export interface DailyRunSummary {
 
 export interface DailyHistoryResponse {
   runs: DailyRunSummary[]
+}
+
+export interface ApprovalItem {
+  approval_id: string
+  run_id: string
+  category: Exclude<DailyEscalation, 'NONE'>
+  title: string
+  summary: string
+  reasons: string[]
+  affected_tickers: string[]
+  recommended_next_step: string
+  briefing: string | null
+  status: ApprovalStatus
+  created_at: string
+  decided_at: string | null
+  decision_note: string | null
+}
+
+export interface ApprovalQueueResponse {
+  items: ApprovalItem[]
 }
 
 export const AGENT_NAMES: AgentName[] = [
