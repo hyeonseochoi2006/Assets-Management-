@@ -1,14 +1,17 @@
 {
   "name": "Asset Management CEO Desk",
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "postCreateCommand": "python -m pip install -r asset-agent/requirements.txt",
+  "postCreateCommand": "python -m pip install -r asset-agent/requirements.txt && npm --prefix asset-hq install",
   "postStartCommand": "bash .devcontainer/start-ceo.sh",
   "postAttachCommand": "bash .devcontainer/start-ceo.sh",
-  "forwardPorts": [8501, 8000],
+  "forwardPorts": [5173, 8501, 8000],
   "portsAttributes": {
-    "8501": {
-      "label": "CEO Desk",
+    "5173": {
+      "label": "Asset Management HQ",
       "onAutoForward": "openPreview"
+    },
+    "8501": {
+      "label": "CEO Desk Backup"
     },
     "8000": {
       "label": "Asset HQ API"
