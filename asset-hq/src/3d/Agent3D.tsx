@@ -2,10 +2,8 @@ import type { AgentName, AgentState } from '../types'
 import type { Vec3 } from './agentPositions'
 import { AgentMovement3D } from './AgentMovement3D'
 import { Desk3D } from './Desk3D'
-import {
-  getAgentCharacterHome,
-  type AgentTravelRequest,
-} from './officeNavigation'
+import { getAgentCharacterHome } from './OfficePOI'
+import type { AgentTravelRequest } from './officeNavigation'
 
 interface Agent3DProps {
   agent: AgentName
