@@ -20,7 +20,7 @@ export function Character({ status, label, executive = false }: CharacterProps) 
       aria-label={`${label} ${statusText[status]}`}
     >
       <div className="character-thought" aria-hidden="true">
-        {status === 'WORKING' ? '···' : status === 'DONE' ? '✓' : status === 'ERROR' ? '!' : 'Z'}
+        {status === 'WORKING' ? '···' : status === 'DONE' ? '✓' : status === 'ERROR' ? '!' : '•'}
       </div>
       <div className="character-head" aria-hidden="true">
         <span className="character-hair" />
