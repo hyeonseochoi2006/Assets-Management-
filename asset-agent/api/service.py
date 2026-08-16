@@ -5,6 +5,7 @@ from ceo_desk.hq_state import AGENT_MISSIONS
 from data.portfolio_monitor import get_live_portfolio_snapshot
 from departments.portfolio import run_portfolio_review
 from executive.cio import run_cio_pipeline
+from operations.daily_runner import run_daily_operations
 from reporting.briefing import run_korean_ceo_brief
 
 from api.job_store import JOB_STORE
@@ -16,7 +17,7 @@ _START_LOCK = Lock()
 class ActiveJobError(RuntimeError):
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
-        super().__init__(f"Another CEO job is already active: {job_id}")
+        super().__init__(f"Another job is already active: {job_id}")
 
 
 def _task_for(agent: str, subject: str) -> str:
@@ -137,6 +138,38 @@ def _run_job(job_id: str, command: CEOCommand) -> None:
         JOB_STORE.fail_job(job_id, f"{type(exc).__name__}: {exc}")
 
 
+def _run_daily_system_job(job_id: str) -> None:
+    JOB_STORE.mark_running(job_id)
+
+    try:
+        def status_callback(agent: str, status: str, task: str | None) -> None:
+            JOB_STORE.update_agent(job_id, agent, status, task)
+
+        result = run_daily_operations(status_callback=status_callback)
+        briefing = result.get("briefing")
+
+        if isinstance(briefing, str) and briefing.strip():
+            output = briefing
+        else:
+            cio = result.get("cio")
+            cio_summary = "중요 변화 없음."
+            if isinstance(cio, dict):
+                summary = cio.get("summary")
+                if isinstance(summary, str) and summary.strip():
+                    cio_summary = summary
+            output = (
+                "=== DAILY OPERATIONS COMPLETE ===\n"
+                f"{cio_summary}\n"
+                "CEO 행동 필요 없음.\n"
+                f"Run ID: {result['run_id']}"
+            )
+
+        JOB_STORE.complete_job(job_id, output, "markdown")
+
+    except Exception as exc:
+        JOB_STORE.fail_job(job_id, f"{type(exc).__name__}: {exc}")
+
+
 def start_job(command_text: str) -> dict[str, object]:
     command = route_command(command_text)
 
@@ -149,12 +182,37 @@ def start_job(command_text: str) -> dict[str, object]:
             command=command_text,
             action=command.action.value,
             ticker=command.ticker,
+            source="CEO",
         )
         thread = Thread(
             target=_run_job,
             args=(str(job["job_id"]), command),
             daemon=True,
             name=f"asset-job-{job['job_id']}",
+        )
+        thread.start()
+
+    return job
+
+
+def start_daily_operations() -> dict[str, object]:
+    """Start one manually-triggered SYSTEM Daily Operations cycle."""
+    with _START_LOCK:
+        active_job_id = JOB_STORE.active_job_id()
+        if active_job_id is not None:
+            raise ActiveJobError(active_job_id)
+
+        job = JOB_STORE.create_job(
+            command="AUTO DAILY OPERATIONS",
+            action="DAILY_OPERATIONS",
+            ticker=None,
+            source="SYSTEM",
+        )
+        thread = Thread(
+            target=_run_daily_system_job,
+            args=(str(job["job_id"]),),
+            daemon=True,
+            name=f"asset-daily-{job['job_id']}",
         )
         thread.start()
 
