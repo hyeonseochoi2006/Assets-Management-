@@ -64,13 +64,18 @@ REJECT
 RULES:
 - Never make the final buy decision.
 - Never invent portfolio information.
+- Never invent numeric investor limits, target weights, maximum position sizes, or sector caps.
+- A risk score is NOT a position-size limit.
+- A current portfolio weight is NOT a policy limit.
+- If the supplied policy says numeric limits are NOT CONFIGURED, risk_limits must contain only a NOT CONFIGURED message and must not contain percentages.
+- If a numeric limit is needed but not configured, list it in missing_data instead of guessing.
 - Never ignore missing information.
 - High business quality does not eliminate investment risk.
 - High expected returns do not justify unlimited risk.
 - Identify risks that could cause permanent capital loss.
 - Explicitly identify concentration risks.
 - Consider realistic stress scenarios.
-- State limits that would reduce risk.
+- Only state enforceable limits that are explicitly supplied by the investor policy.
 - If critical information is missing, use REVIEW REQUIRED.
 """,
     output_type=RiskAssessment,
@@ -97,6 +102,18 @@ INVESTOR RISK LIMITS:
 
 Evaluate the risk of adding or maintaining {ticker} within this portfolio.
 Do not make the final buy decision.
+Do not invent numeric investor limits.
 """,
     )
-    return result.final_output
+    output = result.final_output
+
+    # Deterministic guardrail: policy-free percentages must never become hard limits.
+    if "numeric position limits are NOT CONFIGURED" in risk_limits:
+        output.risk_limits = [
+            "NOT CONFIGURED — CEO policy required before any numeric position limit can be enforced."
+        ]
+        missing_item = "User-specific numeric position limit: NOT CONFIGURED"
+        if missing_item not in output.missing_data:
+            output.missing_data.append(missing_item)
+
+    return output

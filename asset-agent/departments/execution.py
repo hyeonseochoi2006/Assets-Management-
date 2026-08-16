@@ -9,7 +9,7 @@ class ExecutionAssessment(BaseModel):
     preferred_order_type: str
     preferred_entry_method: str
     suggested_tranches: int
-    max_position_pct: float
+    max_position_pct: float | None
     timing_considerations: list[str]
     execution_risks: list[str]
     conditions_before_execution: list[str]
@@ -35,7 +35,7 @@ The investor makes the final decision.
 Your job is to determine how a proposed investment could be executed efficiently IF the investor approves it.
 
 Evaluate:
-- Position size constraints
+- Position size constraints that are explicitly configured
 - Order type
 - Entry method
 - Number of purchase tranches
@@ -48,7 +48,11 @@ Evaluate:
 
 IMPORTANT:
 - Do not invent current prices, spreads, volume, volatility, or market conditions.
+- Do not invent a maximum position percentage.
+- If user-specific numeric position limits are NOT CONFIGURED, set max_position_pct to null.
+- Do not derive max_position_pct from risk scores, current portfolio weights, or generic diversification rules.
 - If live market information is missing, put it in missing_data.
+- If a numeric position limit is needed but not configured, put that in missing_data.
 - Never recommend leverage.
 - Never recommend options.
 - Never override Risk Agent limits.
@@ -107,6 +111,15 @@ EXECUTION CONSTRAINTS:
 
 Evaluate how {ticker} could be executed IF the investor approves the purchase.
 Do not place or simulate a real order.
+Do not invent numeric investor limits.
 """,
     )
-    return result.final_output
+    output = result.final_output
+
+    if "numeric position limits are NOT CONFIGURED" in execution_constraints:
+        output.max_position_pct = None
+        missing_item = "User-specific numeric position limit: NOT CONFIGURED"
+        if missing_item not in output.missing_data:
+            output.missing_data.append(missing_item)
+
+    return output

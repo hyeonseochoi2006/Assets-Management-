@@ -14,6 +14,7 @@ from ceo_desk.command_router import CEOAction, route_command
 from data.portfolio_monitor import get_live_portfolio_snapshot
 from departments.portfolio import run_portfolio_review
 from executive.cio import run_cio_pipeline
+from reporting.briefing import run_korean_ceo_brief
 
 
 st.set_page_config(
@@ -81,7 +82,8 @@ def _help_text() -> str:
 - `내 포트폴리오 보여줘`
 - `내 포트폴리오 점검해`
 
-종목 분석은 **Analysis → Portfolio → Risk → Execution → CIO** 순서로 진행됩니다.
+종목 분석은 **Analysis → Portfolio → Risk → Execution → CIO → Briefing** 순서로 진행됩니다.
+내부 부서는 영어로 작업할 수 있지만 CEO 최종 보고서는 한국어로 제공됩니다.
 실제 주문은 실행하지 않으며 최종 투자 결정은 CEO가 합니다.
 """
 
@@ -132,7 +134,7 @@ with st.sidebar:
     st.write("• 회사 분석")
     st.write("• 실제 포트폴리오 조회")
     st.write("• 전체 포트폴리오 점검")
-    st.write("• CIO 최종 보고")
+    st.write("• 한국어 CEO 최종 보고")
     st.caption("No brokerage orders are created, modified, or cancelled.")
 
 if "messages" not in st.session_state:
@@ -168,29 +170,31 @@ if prompt:
                 st.code(response, language=None)
 
             elif command.action == CEOAction.REVIEW_PORTFOLIO:
-                with st.spinner("Portfolio 부서가 실제 계좌를 점검하는 중입니다..."):
+                with st.spinner("Portfolio 부서 점검 → 한국어 CEO 브리핑 작성 중..."):
                     review = run_portfolio_review(current_snapshot)
-                response = (
-                    f"### PORTFOLIO CEO REVIEW\n\n{review}\n\n"
-                    "**FINAL DECISION: CEO REQUIRED**"
-                )
+                    response = run_korean_ceo_brief(
+                        source_report=review,
+                        report_type="WHOLE_PORTFOLIO_REVIEW",
+                        portfolio_snapshot=current_snapshot,
+                    )
                 kind = "markdown"
                 st.markdown(response)
 
             elif command.action == CEOAction.ANALYZE_COMPANY and command.ticker:
                 ticker = command.ticker
                 with st.spinner(
-                    f"{ticker}: Analysis → Portfolio → Risk → Execution → CIO 진행 중..."
+                    f"{ticker}: Analysis → Portfolio → Risk → Execution → CIO → Briefing 진행 중..."
                 ):
                     _, cio_report = run_cio_pipeline(
                         ticker,
                         portfolio_snapshot=current_snapshot,
                     )
-                response = (
-                    f"### CEO BRIEF — {ticker}\n\n"
-                    f"{cio_report}\n\n"
-                    "---\n**FINAL DECISION: CEO REQUIRED**"
-                )
+                    response = run_korean_ceo_brief(
+                        source_report=cio_report,
+                        report_type="COMPANY_ANALYSIS",
+                        ticker=ticker,
+                        portfolio_snapshot=current_snapshot,
+                    )
                 kind = "markdown"
                 st.markdown(response)
 
