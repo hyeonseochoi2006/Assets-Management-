@@ -1,4 +1,7 @@
 import type {
+  ApprovalDecision,
+  ApprovalItem,
+  ApprovalQueueResponse,
   CreateJobResponse,
   DailyHistoryResponse,
   HealthResponse,
@@ -51,4 +54,27 @@ export async function getDailyHistory(): Promise<DailyHistoryResponse> {
     cache: 'no-store',
   })
   return readJson<DailyHistoryResponse>(response)
+}
+
+export async function getApprovalQueue(): Promise<ApprovalQueueResponse> {
+  const response = await fetch('/api/v1/approvals?limit=20', {
+    cache: 'no-store',
+  })
+  return readJson<ApprovalQueueResponse>(response)
+}
+
+export async function decideApproval(
+  approvalId: string,
+  decision: ApprovalDecision,
+  note?: string,
+): Promise<ApprovalItem> {
+  const response = await fetch(
+    `/api/v1/approvals/${encodeURIComponent(approvalId)}/decision`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, note: note?.trim() || null }),
+    },
+  )
+  return readJson<ApprovalItem>(response)
 }
