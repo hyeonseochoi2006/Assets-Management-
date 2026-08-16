@@ -71,6 +71,8 @@ export interface DailyRunSummary {
   affected_tickers: string[]
   change_count: number
   finding_count: number
+  opportunity_count: number
+  opportunity_tickers: string[]
   has_briefing: boolean
   error: string | null
 }
