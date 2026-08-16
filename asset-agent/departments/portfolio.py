@@ -1,6 +1,8 @@
 from agents import Agent, Runner
 from pydantic import BaseModel
 
+from policies.ceo_operating_policy import get_full_operating_policy
+
 
 class PortfolioAssessment(BaseModel):
     ticker: str
@@ -47,13 +49,17 @@ RULES:
 - If user-specific numeric position limits are NOT CONFIGURED, set target_weight_min_pct, target_weight_max_pct, and max_weight_pct to null.
 - If current portfolio weight is unavailable, set current_weight_pct to null.
 - A current portfolio weight is an observed fact, NOT an investor limit.
-- Do not convert a risk score, concentration observation, or general diversification principle into a made-up percentage limit.
+- Do not convert a risk score, concentration observation, performance target, review date, or general diversification principle into a made-up percentage limit.
 - If a numeric limit is needed but not configured, add "User-specific numeric position limit: NOT CONFIGURED" to missing_data.
 - Never make the final buy decision.
 - If important portfolio information is missing, list it in missing_data.
 - High Analysis confidence does not automatically justify a large position.
 - Respect only diversification and concentration limits explicitly present in the supplied policy.
 - Separate company quality from portfolio suitability.
+- TOTAL ASSETS are not automatically INVESTABLE CAPITAL.
+- LOCKED ASSETS and EXPECTED FUTURE ASSETS must not be treated as currently available brokerage buying power.
+- Do not increase concentration merely to catch up to a performance KPI or review date.
+- Holding investment-account cash is acceptable when no attractive opportunity exists.
 - fit_score must be between 0 and 100.
 
 recommendation must be one of:
@@ -72,22 +78,26 @@ portfolio_review_agent = Agent(
     instructions="""
 You are the portfolio oversight desk for a personal asset-management company.
 
-You receive a live, read-only portfolio snapshot from the brokerage.
+You receive a live, read-only portfolio snapshot and the CEO operating policy.
 Review the portfolio as a whole for the CEO.
 
 Focus on:
 - Position concentration visible in the supplied data
 - Diversification visible in the supplied data
 - Current profit/loss context
+- Whether the available data clearly distinguishes active investment capital from cash reserve, locked assets, and expected future assets
 - Missing cash, sector, FX, tax, correlation, or other data that prevents a complete review
-- The most important issues that deserve CEO attention
+- The most important issues that genuinely deserve CEO attention
 
 RULES:
 - Never invent missing holdings, cash, sectors, prices, weights, or investor limits.
 - Treat UNAVAILABLE as missing data.
 - Do not issue buy or sell orders.
 - Do not make the final investment decision.
-- Do not recommend leverage or options.
+- Do not recommend leverage, margin borrowing, borrowed-money investing, or options.
+- Never treat LOCKED ASSETS or EXPECTED FUTURE ASSETS as available brokerage buying power.
+- Do not manufacture urgency because a performance KPI is behind schedule or a review date is approaching.
+- NO MATERIAL CHANGE means the CEO should not be disturbed.
 - If the data is insufficient for a conclusion, say so clearly.
 
 Return a concise CEO review with:
@@ -95,7 +105,9 @@ Return a concise CEO review with:
 2. What looks good
 3. Main risks
 4. Missing information
-5. CEO attention items
+5. Material change: YES / NO
+6. CEO escalation: NONE / RISK / OPPORTUNITY / ANALYSIS REQUEST / DECISION
+7. CEO action required: YES / NO
 """,
 )
 
@@ -142,11 +154,15 @@ def run_portfolio_review(portfolio_snapshot: str) -> str:
     result = Runner.run_sync(
         portfolio_review_agent,
         f"""
+CEO OPERATING POLICY:
+{get_full_operating_policy()}
+
 LIVE PORTFOLIO SNAPSHOT:
 {portfolio_snapshot}
 
 Review the portfolio as a whole for the CEO.
 Use only the information supplied above.
+Do not manufacture urgency when there is no material change.
 """,
     )
     return result.final_output
