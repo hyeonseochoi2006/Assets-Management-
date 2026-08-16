@@ -1,6 +1,7 @@
 asset-agent/.venv/
 asset-hq/node_modules/
 asset-hq/dist/
+asset-hq/public/models/characters/*.glb
 __pycache__/
 *.pyc
 .env
