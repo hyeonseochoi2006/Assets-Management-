@@ -1,4 +1,6 @@
 import type { AgentName, AgentState } from '../types'
+import { Character } from './Character'
+import { Workstation } from './Workstation'
 
 const labels: Record<AgentName, { title: string; role: string; icon: string }> = {
   CIO: { title: 'CIO', role: '부서 의견 통합 · CEO 판단자료', icon: 'C' },
@@ -22,23 +24,38 @@ export function AgentRoom({ agent, state, selected, onSelect }: AgentRoomProps) 
   return (
     <button
       type="button"
-      className={`agent-room status-${state.status.toLowerCase()} ${selected ? 'selected' : ''}`}
+      className={`agent-room office-room status-${state.status.toLowerCase()} ${selected ? 'selected' : ''}`}
       onClick={() => onSelect(agent)}
+      aria-label={`${label.title} ${state.status}. ${state.task}`}
     >
-      <div className="agent-room-top">
-        <div className="agent-avatar" aria-hidden="true">{label.icon}</div>
-        <div>
-          <div className="eyebrow">OFFICE / DEPARTMENT</div>
-          <h3>{label.title}</h3>
+      <div className="room-wall-glow" />
+      <div className="room-header">
+        <div className="room-title-wrap">
+          <div className="agent-avatar" aria-hidden="true">{label.icon}</div>
+          <div>
+            <div className="eyebrow">OFFICE / DEPARTMENT</div>
+            <h3>{label.title}</h3>
+          </div>
         </div>
         <div className="status-badge">
           <span className="status-dot" />
           {state.status}
         </div>
       </div>
-      <p className="agent-role">{label.role}</p>
-      <div className="task-box">
-        <span>CURRENT TASK</span>
+
+      <div className="room-scene">
+        <Workstation status={state.status} label={label.title} />
+        <Character status={state.status} label={label.title} executive={agent === 'CIO'} />
+        <div className="room-rug" />
+        <div className="room-plant" aria-hidden="true">
+          <span className="plant-leaf leaf-one" />
+          <span className="plant-leaf leaf-two" />
+          <span className="plant-pot" />
+        </div>
+      </div>
+
+      <div className="room-task-summary">
+        <span>{label.role}</span>
         <strong>{state.task || '대기 중'}</strong>
       </div>
     </button>
