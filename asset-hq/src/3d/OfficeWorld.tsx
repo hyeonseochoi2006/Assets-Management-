@@ -45,7 +45,7 @@ function SideWall({
     )
   }
 
-  const doorGap = 1.1
+  const doorGap = 1.9
   const segmentDepth = (depth - doorGap) / 2
   const segmentOffset = (doorGap + segmentDepth) / 2
 
@@ -95,17 +95,17 @@ function CorridorFloor() {
   return (
     <group>
       <mesh position={[0, 0.025, 0.35]} receiveShadow>
-        <boxGeometry args={[1.45, 0.05, 8.1]} />
+        <boxGeometry args={[1.45, 0.05, 9.9]} />
         <meshStandardMaterial color="#101827" roughness={0.94} />
       </mesh>
-      {[4.3, 1.3, -1.8].map((z) => (
+      {[4.75, 1.75, -1.35].map((z) => (
         <mesh key={z} position={[0, 0.026, z]} receiveShadow>
-          <boxGeometry args={[4.2, 0.052, 0.82]} />
+          <boxGeometry args={[4.2, 0.052, 0.62]} />
           <meshStandardMaterial color="#111b2c" roughness={0.94} />
         </mesh>
       ))}
-      <mesh position={[0, 0.026, -3.55]} receiveShadow>
-        <boxGeometry args={[1.45, 0.052, 1.1]} />
+      <mesh position={[0, 0.026, -3.75]} receiveShadow>
+        <boxGeometry args={[1.45, 0.052, 1.25]} />
         <meshStandardMaterial color="#111b2c" roughness={0.94} />
       </mesh>
     </group>
@@ -190,7 +190,7 @@ export function OfficeWorld({ agents, pipelineOrder, selectedAgent, onSelectAgen
           <div className="eyebrow">THREE.JS LIVE HQ</div>
           <h2>Asset Management 3D Office</h2>
         </div>
-        <span>드래그: 회전 · 스크롤/핀치: 확대</span>
+        <span>NavMesh 이동 · 드래그: 회전 · 스크롤/핀치: 확대</span>
       </div>
 
       <div className="three-hq-canvas">
