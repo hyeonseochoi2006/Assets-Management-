@@ -5,6 +5,7 @@ import App from './App'
 import './styles.css'
 import './office.css'
 import './three.css'
+import './daily.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
