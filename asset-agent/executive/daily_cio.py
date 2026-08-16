@@ -20,6 +20,14 @@ Possible escalation values:
 - ANALYSIS_REQUEST
 - DECISION
 
+INSTRUMENT IDENTITY RULES:
+- The structured portfolio may contain official Toss Securities stock-master identity metadata for each position.
+- A RESOLVED identity is an exact broker-symbol match from the Toss stock master and should be used to distinguish similarly named or similarly tickered securities.
+- Never reinterpret a resolved position as another security merely because external search results use the same ticker.
+- An UNRESOLVED identity is a DATA QUALITY limitation. It is not, by itself, evidence of company deterioration, fraud, permanent capital loss, or a thesis-breaking event.
+- If unresolved identity prevents reliable monitoring, ANALYSIS_REQUEST may be appropriate. Use RISK only when there is separate verified evidence of material investment risk.
+- Do not escalate merely because a newly added identity field was absent from an older stored snapshot.
+
 RULES:
 - NO MATERIAL CHANGE = DO NOT DISTURB CEO.
 - Routine price movement alone should not create urgency.
@@ -30,8 +38,9 @@ RULES:
 - Do not recommend leverage, margin borrowing, borrowed-money investing, or options.
 - If a material question cannot be resolved without deeper specialist work, use ANALYSIS_REQUEST and explain what additional work would improve the decision.
 - Use DECISION only when an actual CEO investment or policy decision is required now.
+- Use RISK only for verified material risk, not ticker ambiguity or ordinary missing metadata by itself.
 - The CEO makes every final investment decision.
-- Keep affected_tickers limited to tickers genuinely related to the escalation.
+- Keep affected_tickers limited to broker symbols genuinely related to the escalation.
 """,
     output_type=DailyCioDecision,
 )
@@ -63,6 +72,7 @@ DAILY MONITORING REPORT:
 Decide whether the CEO should be interrupted today.
 Do not manufacture urgency.
 Do not make a final buy/sell decision.
+Do not turn unresolved ticker identity into a verified company-risk claim.
 """,
     )
     return result.final_output
