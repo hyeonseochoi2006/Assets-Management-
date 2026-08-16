@@ -1,4 +1,5 @@
 import os
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from api.job_store import JOB_STORE
 from api.service import ActiveJobError, start_daily_operations, start_job
+from operations.approval_store import APPROVAL_STORE, ApprovalStoreError
 from operations.run_store import RUN_STORE
 
 
@@ -13,13 +15,19 @@ class JobRequest(BaseModel):
     command: str = Field(min_length=1, max_length=500)
 
 
+class ApprovalDecisionRequest(BaseModel):
+    decision: Literal["APPROVED", "DEFERRED", "REJECTED", "ACKNOWLEDGED"]
+    note: str | None = Field(default=None, max_length=1000)
+
+
 app = FastAPI(
     title="Asset Management HQ API",
     description=(
-        "Read-only bridge between the future React/3D HQ and the existing "
-        "Python investment-agent company. This API does not place brokerage orders."
+        "Read-only brokerage bridge and CEO operating API for the Python "
+        "investment-agent company. Approval decisions are recorded but never "
+        "place, modify, or cancel brokerage orders."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 
@@ -113,6 +121,36 @@ def get_daily_operations_history() -> dict[str, object]:
     return {
         "runs": RUN_STORE.recent_run_summaries(7),
     }
+
+
+@app.get("/api/v1/approvals")
+def get_approvals(queue_status: str | None = None, limit: int = 20) -> dict[str, object]:
+    normalized = queue_status.upper() if queue_status else None
+    return {
+        "items": APPROVAL_STORE.list(status=normalized, limit=limit),
+    }
+
+
+@app.post("/api/v1/approvals/{approval_id}/decision")
+def decide_approval(
+    approval_id: str,
+    request: ApprovalDecisionRequest,
+) -> dict[str, object]:
+    """Record a CEO decision only. This endpoint never executes a trade."""
+    try:
+        return APPROVAL_STORE.decide(
+            approval_id=approval_id,
+            decision=request.decision,
+            note=request.note.strip() if request.note else None,
+        )
+    except ApprovalStoreError as exc:
+        message = str(exc)
+        http_status = (
+            status.HTTP_404_NOT_FOUND
+            if "not found" in message.lower()
+            else status.HTTP_409_CONFLICT
+        )
+        raise HTTPException(status_code=http_status, detail=message) from exc
 
 
 @app.get("/api/v1/jobs/{job_id}")
