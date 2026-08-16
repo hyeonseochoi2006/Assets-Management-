@@ -19,8 +19,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BRANCH="$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || true)"
 if [ "$BRANCH" = "main" ]; then
   export ASSET_ENV="PRODUCTION"
+  UVICORN_RELOAD_ARGS=()
 else
   export ASSET_ENV="DEVELOPMENT"
+  UVICORN_RELOAD_ARGS=(--reload)
 fi
 export ASSET_BRANCH="$BRANCH"
 export ASSET_API_PORT="$API_PORT"
@@ -39,6 +41,7 @@ else
     nohup python -m uvicorn api.app:app \
       --host 0.0.0.0 \
       --port "$API_PORT" \
+      "${UVICORN_RELOAD_ARGS[@]}" \
       >"$API_LOG" 2>&1 &
 
     API_PID=$!
