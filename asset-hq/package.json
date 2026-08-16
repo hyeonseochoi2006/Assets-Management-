@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc --noEmit && vite build",
+    "generate:characters": "node scripts/generateCharacters.mjs",
+    "postinstall": "npm run generate:characters",
+    "build": "npm run generate:characters && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
