@@ -3,8 +3,10 @@ from datetime import datetime, timezone
 
 from data.portfolio_monitor import get_live_portfolio_snapshots
 from departments.monitoring import run_daily_monitoring
+from departments.opportunity import run_opportunity_scout
 from executive.daily_cio import run_daily_cio_decision
 from operations.change_detector import compare_portfolio_snapshots
+from operations.models import OpportunityScoutReport
 from operations.run_store import RUN_STORE
 from reporting.briefing import run_korean_ceo_brief
 
@@ -69,22 +71,45 @@ def run_daily_operations(
             "Daily Operations · 보유종목 중요 변화 모니터링",
         )
 
+        scout_task = "Daily Operations · 신규 투자기회 저비용 탐색"
+        _emit(status_callback, "Analysis", "WORKING", scout_task)
+        try:
+            opportunities = run_opportunity_scout(current_snapshot)
+            _emit(status_callback, "Analysis", "DONE", scout_task)
+        except Exception as scout_exc:
+            opportunities = OpportunityScoutReport(
+                candidates=[],
+                data_quality="LOW",
+                scan_scope="ROUTINE OPPORTUNITY SCOUT UNAVAILABLE",
+                notes=[
+                    "Opportunity Scout failed independently; portfolio monitoring and CIO review continued.",
+                    f"Error type: {type(scout_exc).__name__}",
+                ],
+            )
+            _emit(
+                status_callback,
+                "Analysis",
+                "ERROR",
+                "Daily Operations · Opportunity Scout 오류 기록",
+            )
+
         _emit(
             status_callback,
             "CIO",
             "WORKING",
-            "Daily Operations · CEO 에스컬레이션 판단",
+            "Daily Operations · 위험/기회 CEO 에스컬레이션 판단",
         )
         cio_decision = run_daily_cio_decision(
             current_snapshot,
             changes,
             monitoring,
+            opportunities,
         )
         _emit(
             status_callback,
             "CIO",
             "DONE",
-            "Daily Operations · CEO 에스컬레이션 판단",
+            "Daily Operations · 위험/기회 CEO 에스컬레이션 판단",
         )
 
         should_brief_ceo = (
@@ -106,6 +131,7 @@ def run_daily_operations(
                     "DAILY CIO DECISION:\n" + cio_decision.model_dump_json(indent=2),
                     "DETERMINISTIC PORTFOLIO CHANGES:\n" + changes.model_dump_json(indent=2),
                     "DAILY MONITORING:\n" + monitoring.model_dump_json(indent=2),
+                    "OPPORTUNITY SCOUT:\n" + opportunities.model_dump_json(indent=2),
                 ]
             )
             briefing = run_korean_ceo_brief(
@@ -126,6 +152,7 @@ def run_daily_operations(
             completed_at=completed_at,
             changes=changes.model_dump(),
             monitoring=monitoring.model_dump(),
+            opportunities=opportunities.model_dump(),
             cio=cio_decision.model_dump(),
             briefing=briefing,
         )
@@ -137,6 +164,7 @@ def run_daily_operations(
             "completed_at": completed_at,
             "changes": changes.model_dump(),
             "monitoring": monitoring.model_dump(),
+            "opportunities": opportunities.model_dump(),
             "cio": cio_decision.model_dump(),
             "briefing": briefing,
         }
