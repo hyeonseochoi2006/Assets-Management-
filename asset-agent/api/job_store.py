@@ -7,6 +7,7 @@ from ceo_desk.hq_state import hq_snapshot, mark_active_errors, new_hq_agents, up
 
 
 JOB_STATUSES = {"QUEUED", "RUNNING", "COMPLETED", "FAILED"}
+JOB_SOURCES = {"CEO", "SYSTEM"}
 
 
 def _now_iso() -> str:
@@ -26,11 +27,16 @@ class JobStore:
         command: str,
         action: str,
         ticker: str | None,
+        source: str = "CEO",
     ) -> dict[str, object]:
+        if source not in JOB_SOURCES:
+            raise ValueError(f"Unsupported job source: {source}")
+
         with self._lock:
             job_id = uuid4().hex
             job = {
                 "job_id": job_id,
+                "source": source,
                 "command": command,
                 "action": action,
                 "ticker": ticker,
@@ -109,6 +115,8 @@ class JobStore:
                 return {
                     "latest_job_id": None,
                     "job_status": "IDLE",
+                    "source": None,
+                    "action": None,
                     **snapshot,
                 }
 
@@ -117,6 +125,8 @@ class JobStore:
             return {
                 "latest_job_id": self._latest_job_id,
                 "job_status": job["status"],
+                "source": job["source"],
+                "action": job["action"],
                 "command": job["command"],
                 "ticker": job["ticker"],
                 **snapshot,
