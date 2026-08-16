@@ -20,6 +20,7 @@ check() {
 
 check "FastAPI health" "http://127.0.0.1:${API_PORT}/api/v1/health"
 check "Daily history API" "http://127.0.0.1:${API_PORT}/api/v1/operations/daily/history"
+check "CEO approval queue" "http://127.0.0.1:${API_PORT}/api/v1/approvals?limit=1"
 check "React HQ" "http://127.0.0.1:${HQ_PORT}"
 
 if [ "$fail" -ne 0 ]; then
