@@ -1,6 +1,6 @@
 import type { AgentName, AgentState } from '../types'
 import type { Vec3 } from './agentPositions'
-import { CharacterModel3D } from './characters/CharacterModel3D'
+import { GLTFCharacter3D } from './characters/GLTFCharacter3D'
 import { Desk3D } from './Desk3D'
 
 interface Agent3DProps {
@@ -25,7 +25,7 @@ export function Agent3D({ agent, state, position, selected, onSelect }: Agent3DP
     <group position={position} onClick={(event) => { event.stopPropagation(); onSelect(agent) }}>
       <Desk3D status={state.status} />
       <group position={[0, 0, 0.78]}>
-        <CharacterModel3D agent={agent} status={state.status} />
+        <GLTFCharacter3D agent={agent} status={state.status} />
       </group>
 
       <mesh position={[0, 0.035, 0.1]} rotation={[-Math.PI / 2, 0, 0]}>
