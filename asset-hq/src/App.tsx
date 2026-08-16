@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { getHealth } from './api/hqApi'
+import { ApprovalQueuePanel } from './components/ApprovalQueuePanel'
 import { CeoCommand } from './components/CeoCommand'
 import { DailyOperationsPanel } from './components/DailyOperationsPanel'
 import { OfficeFloor } from './components/OfficeFloor'
@@ -78,6 +79,7 @@ export default function App() {
 
         <Workflow order={pipelineOrder} agents={agents} />
         <DailyOperationsPanel />
+        <ApprovalQueuePanel />
 
         {view === '3d' ? (
           <OfficeWorld
