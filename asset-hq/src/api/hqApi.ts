@@ -1,5 +1,6 @@
 import type {
   CreateJobResponse,
+  DailyHistoryResponse,
   HealthResponse,
   HQJob,
   HQState,
@@ -43,4 +44,11 @@ export async function getJob(jobId: string): Promise<HQJob> {
 export async function getHQState(): Promise<HQState> {
   const response = await fetch('/api/v1/hq/state', { cache: 'no-store' })
   return readJson<HQState>(response)
+}
+
+export async function getDailyHistory(): Promise<DailyHistoryResponse> {
+  const response = await fetch('/api/v1/operations/daily/history', {
+    cache: 'no-store',
+  })
+  return readJson<DailyHistoryResponse>(response)
 }
