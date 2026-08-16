@@ -1,4 +1,6 @@
 asset-agent/.venv/
+asset-hq/node_modules/
+asset-hq/dist/
 __pycache__/
 *.pyc
 .env
