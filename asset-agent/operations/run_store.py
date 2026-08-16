@@ -156,5 +156,51 @@ class DailyRunStore:
             result[key.removesuffix("_json")] = json.loads(raw) if raw else None
         return result
 
+    def recent_run_summaries(self, limit: int = 7) -> list[dict[str, object]]:
+        safe_limit = max(1, min(limit, 30))
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT run_id, started_at, completed_at, status,
+                       changes_json, monitoring_json, cio_json, briefing, error
+                FROM daily_runs
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+
+        summaries: list[dict[str, object]] = []
+        for row in rows:
+            changes = json.loads(row["changes_json"]) if row["changes_json"] else None
+            monitoring = (
+                json.loads(row["monitoring_json"]) if row["monitoring_json"] else None
+            )
+            cio = json.loads(row["cio_json"]) if row["cio_json"] else None
+
+            summaries.append(
+                {
+                    "run_id": row["run_id"],
+                    "started_at": row["started_at"],
+                    "completed_at": row["completed_at"],
+                    "status": row["status"],
+                    "material_change": cio.get("material_change") if cio else None,
+                    "escalation": cio.get("escalation") if cio else None,
+                    "ceo_action_required": (
+                        cio.get("ceo_action_required") if cio else None
+                    ),
+                    "summary": cio.get("summary") if cio else None,
+                    "affected_tickers": cio.get("affected_tickers", []) if cio else [],
+                    "change_count": len(changes.get("changes", [])) if changes else 0,
+                    "finding_count": (
+                        len(monitoring.get("findings", [])) if monitoring else 0
+                    ),
+                    "has_briefing": bool(row["briefing"]),
+                    "error": row["error"],
+                }
+            )
+
+        return summaries
+
 
 RUN_STORE = DailyRunStore()
