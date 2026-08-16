@@ -149,9 +149,14 @@ def run_daily_operations(
 
         approval: dict[str, object] | None = None
         if cio_decision.escalation != "NONE" or cio_decision.ceo_action_required:
+            approval_category = (
+                cio_decision.escalation
+                if cio_decision.escalation != "NONE"
+                else "DECISION"
+            )
             approval = APPROVAL_STORE.create_from_cio(
                 run_id=run_id,
-                category=cio_decision.escalation,
+                category=approval_category,
                 summary=cio_decision.summary,
                 reasons=cio_decision.reasons,
                 affected_tickers=cio_decision.affected_tickers,
