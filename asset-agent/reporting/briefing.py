@@ -55,6 +55,16 @@ For a whole-portfolio review, use this structure:
 6. CEO 에스컬레이션
 7. CEO 행동: 필요 / 불필요
 
+For a Daily Operations brief, use this structure:
+1. 오늘의 핵심 변화
+2. 영향받는 종목
+3. CIO 판단
+4. 에스컬레이션: 위험 / 기회 / 추가 분석 요청 / 결정 필요
+5. 근거
+6. 다음 단계
+7. CEO 행동: 필요 / 불필요
+Do not turn routine portfolio price changes into a CEO alert unless the source CIO already judged them material.
+
 If the CIO says CEO action is required, preserve that requirement clearly.
 If the CIO says CEO action is not required, end with "CEO 행동 필요 없음" rather than asking for a decision.
 """,
