@@ -2,8 +2,9 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+from data.instrument_resolver import resolve_instruments
 from data.toss_client import TossAPIError, get_live_portfolio
-from operations.models import PortfolioSnapshot, PositionSnapshot
+from operations.models import InstrumentIdentity, PortfolioSnapshot, PositionSnapshot
 
 
 def _to_float(value: Any) -> float | None:
@@ -156,6 +157,26 @@ def _validated_payloads(
     return holdings_payload, prices_payload, result
 
 
+def _symbols(portfolio: dict[str, Any]) -> list[str]:
+    raw_symbols = portfolio.get("symbols", [])
+    if not isinstance(raw_symbols, list):
+        return []
+    return [str(symbol).strip() for symbol in raw_symbols if str(symbol).strip()]
+
+
+def _instrument_identities(
+    portfolio: dict[str, Any],
+    symbols: list[str],
+) -> dict[str, InstrumentIdentity]:
+    stocks_payload = portfolio.get("stocks", {})
+    if not isinstance(stocks_payload, dict):
+        stocks_payload = {}
+
+    raw_error = portfolio.get("stockInfoError")
+    stock_info_error = str(raw_error) if raw_error else None
+    return resolve_instruments(symbols, stocks_payload, stock_info_error)
+
+
 def build_structured_portfolio_snapshot(
     portfolio: dict[str, Any],
 ) -> PortfolioSnapshot:
@@ -179,19 +200,20 @@ def build_structured_portfolio_snapshot(
     holding_records = _best_holding_record_by_symbol(holdings_payload)
     prices = _price_map(prices_payload)
     total_market = _total_market_by_currency(holdings_payload)
-
-    symbols = portfolio.get("symbols", [])
-    if not isinstance(symbols, list):
-        symbols = []
+    symbols = _symbols(portfolio)
+    identities = _instrument_identities(portfolio, symbols)
 
     positions: list[PositionSnapshot] = []
-    for raw_symbol in symbols:
-        symbol = str(raw_symbol)
+    for symbol in symbols:
         record = holding_records.get(symbol, {})
         price_info = prices.get(symbol, {})
+        instrument = identities.get(symbol)
 
         currency = price_info.get("currency")
         currency_text = str(currency).upper() if currency else None
+        if currency_text is None and instrument is not None:
+            currency_text = instrument.currency
+
         last_price = _to_float(price_info.get("lastPrice"))
         quantity = _first_numeric(
             record,
@@ -216,6 +238,7 @@ def build_structured_portfolio_snapshot(
                 price=last_price,
                 position_value=position_value,
                 weight_pct=weight,
+                instrument=instrument,
             )
         )
 
@@ -230,6 +253,27 @@ def build_structured_portfolio_snapshot(
         cash_available=None,
         cash_status="UNAVAILABLE FROM CURRENT HOLDINGS DATA",
     )
+
+
+def _identity_lines(instrument: InstrumentIdentity | None) -> list[str]:
+    if instrument is None:
+        return ["  Instrument Identity: UNAVAILABLE"]
+
+    if not instrument.resolved:
+        return [
+            "  Instrument Identity: UNRESOLVED",
+            f"  Identity Note: {instrument.resolution_note or 'UNAVAILABLE'}",
+        ]
+
+    display_name = instrument.name or instrument.english_name or "UNAVAILABLE"
+    return [
+        f"  Instrument Identity: RESOLVED — {display_name}",
+        f"  English Name: {instrument.english_name or 'UNAVAILABLE'}",
+        f"  ISIN: {instrument.isin_code or 'UNAVAILABLE'}",
+        f"  Market: {instrument.market or 'UNAVAILABLE'}",
+        f"  Security Type: {instrument.security_type or 'UNAVAILABLE'}",
+        f"  Listing Status: {instrument.status or 'UNAVAILABLE'}",
+    ]
 
 
 def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
@@ -253,11 +297,14 @@ def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
     holding_records = _best_holding_record_by_symbol(holdings_payload)
     prices = _price_map(prices_payload)
     total_market = _total_market_by_currency(holdings_payload)
+    symbols = _symbols(portfolio)
+    identities = _instrument_identities(portfolio, symbols)
 
     lines = [
         "LIVE TOSS PORTFOLIO SNAPSHOT",
         f"Account Seq: {account_seq}",
         "Data Source: Toss Securities Open API (read-only)",
+        "Instrument Identity Source: Toss Securities Stock Info API",
         "",
         "PORTFOLIO TOTALS",
         f"Total Purchase Amount: {_format_money(total_purchase)}",
@@ -269,22 +316,20 @@ def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
         "POSITIONS",
     ]
 
-    symbols = portfolio.get("symbols", [])
-    if not isinstance(symbols, list):
-        symbols = []
-
     if not symbols:
         lines.append("No stock positions detected.")
 
     for symbol in symbols:
-        symbol = str(symbol)
         record = holding_records.get(symbol, {})
         price_info = prices.get(symbol, {})
+        instrument = identities.get(symbol)
 
         currency = price_info.get("currency")
         currency_text = str(currency).upper() if currency else None
-        last_price = _to_float(price_info.get("lastPrice"))
+        if currency_text is None and instrument is not None:
+            currency_text = instrument.currency
 
+        last_price = _to_float(price_info.get("lastPrice"))
         quantity = _first_numeric(
             record,
             ("quantity", "holdingQuantity", "totalQuantity", "balanceQuantity"),
@@ -304,6 +349,7 @@ def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
                 weight = position_value / currency_total * 100
 
         lines.append(f"- {symbol}")
+        lines.extend(_identity_lines(instrument))
         lines.append(
             "  Current Price: "
             + (
@@ -331,6 +377,8 @@ def build_portfolio_snapshot(portfolio: dict[str, Any]) -> str:
             "",
             "DATA LIMITATIONS",
             "- Do not infer cash from stock holdings.",
+            "- Do not infer company identity from a ticker alone.",
+            "- UNRESOLVED identity means Toss stock-master metadata did not confirm the instrument.",
             "- UNAVAILABLE means the Toss response did not provide enough data to calculate safely.",
             "- Mixed-currency weights are not combined without an explicit FX conversion step.",
         ]
