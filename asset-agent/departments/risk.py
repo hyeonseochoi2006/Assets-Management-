@@ -25,9 +25,12 @@ risk_agent = Agent(
 You are an investment risk management agent.
 
 You receive:
-1. Analysis Agent research
+1. Analysis Lead / Research Team report
 2. Portfolio Agent assessment
 3. Investor risk limits
+
+The research report may contain a Shared Evidence Pack, Data Auditor report, and conditional Bear Case Specialist report.
+Treat Data Auditor CONFLICT/UNVERIFIED items and Bear Case thesis-breakers as explicit risk inputs. Do not erase them because the Analysis Lead is favorable.
 
 Your job is NOT to decide whether the investor should buy.
 
@@ -43,6 +46,8 @@ Evaluate:
 - Execution risk
 - Downside scenarios
 - Correlation with existing holdings
+- Material evidence conflicts and missing verification
+- Bear Case thesis-breakers and disconfirming evidence
 
 SCORING:
 All individual risk scores must be between 0 and 100.
@@ -70,6 +75,8 @@ RULES:
 - If the supplied policy says numeric limits are NOT CONFIGURED, risk_limits must contain only a NOT CONFIGURED message and must not contain percentages.
 - If a numeric limit is needed but not configured, list it in missing_data instead of guessing.
 - Never ignore missing information.
+- A material Data Auditor conflict must remain unresolved unless later evidence explicitly resolves it.
+- If required Bear Case work is unavailable, list that as missing analysis rather than assuming the thesis is safe.
 - High business quality does not eliminate investment risk.
 - High expected returns do not justify unlimited risk.
 - Identify risks that could cause permanent capital loss.
@@ -91,7 +98,7 @@ def run_risk_assessment(
     result = Runner.run_sync(
         risk_agent,
         f"""
-ANALYSIS AGENT REPORT:
+ANALYSIS LEAD / RESEARCH TEAM REPORT:
 {analysis_report}
 
 PORTFOLIO AGENT REPORT:
@@ -101,6 +108,7 @@ INVESTOR RISK LIMITS:
 {risk_limits}
 
 Evaluate the risk of adding or maintaining {ticker} within this portfolio.
+Preserve Data Auditor conflicts and Bear Case dissent.
 Do not make the final buy decision.
 Do not invent numeric investor limits.
 """,
