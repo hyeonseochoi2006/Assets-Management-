@@ -40,7 +40,7 @@ def run_daily_operations(
             status_callback,
             "Portfolio",
             "WORKING",
-            "Daily Operations · Toss 포트폴리오 Snapshot",
+            "Daily Operations · Toss 포트폴리오 + 종목식별 Snapshot",
         )
         readable_snapshot, current_snapshot = get_live_portfolio_snapshots()
         changes = compare_portfolio_snapshots(previous_snapshot, current_snapshot)
@@ -49,10 +49,9 @@ def run_daily_operations(
             status_callback,
             "Portfolio",
             "DONE",
-            "Daily Operations · Toss 포트폴리오 Snapshot",
+            "Daily Operations · Toss 포트폴리오 + 종목식별 Snapshot",
         )
 
-        symbols = [position.symbol for position in current_snapshot.positions]
         _emit(
             status_callback,
             "Analysis",
@@ -60,7 +59,7 @@ def run_daily_operations(
             "Daily Operations · 보유종목 중요 변화 모니터링",
         )
         monitoring = run_daily_monitoring(
-            symbols,
+            current_snapshot.positions,
             previous_snapshot.captured_at if previous_snapshot else None,
         )
         _emit(
