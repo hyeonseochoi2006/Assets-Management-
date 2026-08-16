@@ -75,6 +75,26 @@ class MonitoringReport(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class OpportunityCandidate(BaseModel):
+    symbol: str
+    company_name: str
+    screening_status: Literal["WATCHLIST", "CIO_REVIEW"]
+    reason: str
+    why_now: str
+    confidence: Literal["LOW", "MEDIUM", "HIGH"]
+    evidence: list[str] = Field(default_factory=list)
+    key_risks: list[str] = Field(default_factory=list)
+    missing_or_unverified: list[str] = Field(default_factory=list)
+    instrument: InstrumentIdentity | None = None
+
+
+class OpportunityScoutReport(BaseModel):
+    candidates: list[OpportunityCandidate] = Field(default_factory=list)
+    data_quality: Literal["HIGH", "MEDIUM", "LOW"]
+    scan_scope: str
+    notes: list[str] = Field(default_factory=list)
+
+
 class DailyCioDecision(BaseModel):
     material_change: bool
     escalation: Literal[
