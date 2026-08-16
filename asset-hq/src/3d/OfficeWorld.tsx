@@ -7,6 +7,10 @@ import { Agent3D } from './Agent3D'
 import { CameraControls } from './CameraControls'
 import { DataPacket3D } from './DataPacket3D'
 import { Desk3D } from './Desk3D'
+import {
+  createHandoffTravel,
+  type AgentTravelRequest,
+} from './officeNavigation'
 
 interface OfficeWorldProps {
   agents: AgentMap
@@ -21,7 +25,53 @@ interface Handoff {
   id: number
 }
 
-function RoomShell({ position, wide = false }: { position: Vec3; wide?: boolean }) {
+type CorridorSide = 'left' | 'right'
+
+function SideWall({
+  x,
+  depth,
+  hasDoor,
+}: {
+  x: number
+  depth: number
+  hasDoor: boolean
+}) {
+  if (!hasDoor) {
+    return (
+      <mesh position={[x, 0.75, 0]} receiveShadow>
+        <boxGeometry args={[0.12, 1.5, depth]} />
+        <meshStandardMaterial color="#141d2c" roughness={0.92} />
+      </mesh>
+    )
+  }
+
+  const doorGap = 1.1
+  const segmentDepth = (depth - doorGap) / 2
+  const segmentOffset = (doorGap + segmentDepth) / 2
+
+  return (
+    <>
+      <mesh position={[x, 0.75, -segmentOffset]} receiveShadow>
+        <boxGeometry args={[0.12, 1.5, segmentDepth]} />
+        <meshStandardMaterial color="#141d2c" roughness={0.92} />
+      </mesh>
+      <mesh position={[x, 0.75, segmentOffset]} receiveShadow>
+        <boxGeometry args={[0.12, 1.5, segmentDepth]} />
+        <meshStandardMaterial color="#141d2c" roughness={0.92} />
+      </mesh>
+    </>
+  )
+}
+
+function RoomShell({
+  position,
+  wide = false,
+  corridorSide,
+}: {
+  position: Vec3
+  wide?: boolean
+  corridorSide?: CorridorSide
+}) {
   const width = wide ? 8.4 : ROOM_SIZE[0]
   const depth = ROOM_SIZE[1]
 
@@ -35,13 +85,28 @@ function RoomShell({ position, wide = false }: { position: Vec3; wide?: boolean 
         <boxGeometry args={[width, 1.5, 0.12]} />
         <meshStandardMaterial color="#172133" roughness={0.92} />
       </mesh>
-      <mesh position={[-width / 2, 0.75, 0]} receiveShadow>
-        <boxGeometry args={[0.12, 1.5, depth]} />
-        <meshStandardMaterial color="#141d2c" roughness={0.92} />
+      <SideWall x={-width / 2} depth={depth} hasDoor={corridorSide === 'left'} />
+      <SideWall x={width / 2} depth={depth} hasDoor={corridorSide === 'right'} />
+    </group>
+  )
+}
+
+function CorridorFloor() {
+  return (
+    <group>
+      <mesh position={[0, 0.025, 0.35]} receiveShadow>
+        <boxGeometry args={[1.45, 0.05, 8.1]} />
+        <meshStandardMaterial color="#101827" roughness={0.94} />
       </mesh>
-      <mesh position={[width / 2, 0.75, 0]} receiveShadow>
-        <boxGeometry args={[0.12, 1.5, depth]} />
-        <meshStandardMaterial color="#141d2c" roughness={0.92} />
+      {[4.3, 1.3, -1.8].map((z) => (
+        <mesh key={z} position={[0, 0.026, z]} receiveShadow>
+          <boxGeometry args={[4.2, 0.052, 0.82]} />
+          <meshStandardMaterial color="#111b2c" roughness={0.94} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.026, -3.55]} receiveShadow>
+        <boxGeometry args={[1.45, 0.052, 1.1]} />
+        <meshStandardMaterial color="#111b2c" roughness={0.94} />
       </mesh>
     </group>
   )
@@ -84,6 +149,7 @@ export function OfficeWorld({ agents, pipelineOrder, selectedAgent, onSelectAgen
   const previousAgents = useRef<AgentMap | null>(null)
   const handoffTimer = useRef<number | null>(null)
   const [handoff, setHandoff] = useState<Handoff | null>(null)
+  const [travelRequest, setTravelRequest] = useState<AgentTravelRequest | null>(null)
 
   useEffect(() => {
     const previous = previousAgents.current
@@ -97,8 +163,11 @@ export function OfficeWorld({ agents, pipelineOrder, selectedAgent, onSelectAgen
         : false
 
       if (activeNow && !activeBefore) {
+        const id = Date.now() + index
         if (handoffTimer.current) window.clearTimeout(handoffTimer.current)
-        setHandoff({ from, to, id: Date.now() })
+
+        setTravelRequest(createHandoffTravel(from, to, id))
+        setHandoff({ from, to, id })
         handoffTimer.current = window.setTimeout(() => setHandoff(null), 1500)
         break
       }
@@ -144,13 +213,14 @@ export function OfficeWorld({ agents, pipelineOrder, selectedAgent, onSelectAgen
             <meshStandardMaterial color="#080d16" roughness={1} />
           </mesh>
           <gridHelper args={[14, 14, '#22314b', '#101827']} position={[0, 0.015, 0]} />
+          <CorridorFloor />
 
-          <RoomShell position={CEO_POSITION} />
-          <RoomShell position={AGENT_POSITIONS.CIO} />
-          <RoomShell position={AGENT_POSITIONS.Analysis} />
-          <RoomShell position={AGENT_POSITIONS.Portfolio} />
-          <RoomShell position={AGENT_POSITIONS.Risk} />
-          <RoomShell position={AGENT_POSITIONS.Execution} />
+          <RoomShell position={CEO_POSITION} corridorSide="right" />
+          <RoomShell position={AGENT_POSITIONS.CIO} corridorSide="left" />
+          <RoomShell position={AGENT_POSITIONS.Analysis} corridorSide="right" />
+          <RoomShell position={AGENT_POSITIONS.Portfolio} corridorSide="left" />
+          <RoomShell position={AGENT_POSITIONS.Risk} corridorSide="right" />
+          <RoomShell position={AGENT_POSITIONS.Execution} corridorSide="left" />
           <RoomShell position={AGENT_POSITIONS.Briefing} wide />
 
           <StaticCEO />
@@ -161,6 +231,7 @@ export function OfficeWorld({ agents, pipelineOrder, selectedAgent, onSelectAgen
               state={agents[agent]}
               position={AGENT_POSITIONS[agent]}
               selected={selectedAgent === agent}
+              travelRequest={travelRequest}
               onSelect={onSelectAgent}
             />
           ))}
