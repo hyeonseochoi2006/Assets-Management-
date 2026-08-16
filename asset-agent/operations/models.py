@@ -3,6 +3,20 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class InstrumentIdentity(BaseModel):
+    symbol: str
+    name: str | None = None
+    english_name: str | None = None
+    isin_code: str | None = None
+    market: str | None = None
+    security_type: str | None = None
+    status: str | None = None
+    currency: str | None = None
+    resolved: bool = False
+    source: str = "Toss Securities Stock Info API"
+    resolution_note: str | None = None
+
+
 class PositionSnapshot(BaseModel):
     symbol: str
     currency: str | None = None
@@ -10,6 +24,7 @@ class PositionSnapshot(BaseModel):
     price: float | None = None
     position_value: float | None = None
     weight_pct: float | None = None
+    instrument: InstrumentIdentity | None = None
 
 
 class PortfolioSnapshot(BaseModel):
