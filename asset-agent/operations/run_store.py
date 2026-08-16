@@ -39,6 +39,7 @@ class DailyRunStore:
                     snapshot_json TEXT,
                     changes_json TEXT,
                     monitoring_json TEXT,
+                    opportunities_json TEXT,
                     cio_json TEXT,
                     briefing TEXT,
                     error TEXT
@@ -56,6 +57,15 @@ class DailyRunStore:
                 ON portfolio_snapshots(captured_at DESC);
                 """
             )
+
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(daily_runs)").fetchall()
+            }
+            if "opportunities_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE daily_runs ADD COLUMN opportunities_json TEXT"
+                )
 
     def start_run(self, started_at: str) -> str:
         run_id = uuid4().hex
@@ -104,6 +114,7 @@ class DailyRunStore:
         completed_at: str,
         changes: dict[str, object],
         monitoring: dict[str, object],
+        opportunities: dict[str, object],
         cio: dict[str, object],
         briefing: str | None,
     ) -> None:
@@ -115,6 +126,7 @@ class DailyRunStore:
                     status = 'COMPLETED',
                     changes_json = ?,
                     monitoring_json = ?,
+                    opportunities_json = ?,
                     cio_json = ?,
                     briefing = ?,
                     error = NULL
@@ -124,6 +136,7 @@ class DailyRunStore:
                     completed_at,
                     json.dumps(changes, ensure_ascii=False),
                     json.dumps(monitoring, ensure_ascii=False),
+                    json.dumps(opportunities, ensure_ascii=False),
                     json.dumps(cio, ensure_ascii=False),
                     briefing,
                     run_id,
@@ -151,7 +164,13 @@ class DailyRunStore:
             return None
 
         result = dict(row)
-        for key in ("snapshot_json", "changes_json", "monitoring_json", "cio_json"):
+        for key in (
+            "snapshot_json",
+            "changes_json",
+            "monitoring_json",
+            "opportunities_json",
+            "cio_json",
+        ):
             raw = result.pop(key, None)
             result[key.removesuffix("_json")] = json.loads(raw) if raw else None
         return result
@@ -162,7 +181,8 @@ class DailyRunStore:
             rows = connection.execute(
                 """
                 SELECT run_id, started_at, completed_at, status,
-                       changes_json, monitoring_json, cio_json, briefing, error
+                       changes_json, monitoring_json, opportunities_json,
+                       cio_json, briefing, error
                 FROM daily_runs
                 ORDER BY started_at DESC
                 LIMIT ?
@@ -176,7 +196,13 @@ class DailyRunStore:
             monitoring = (
                 json.loads(row["monitoring_json"]) if row["monitoring_json"] else None
             )
+            opportunities = (
+                json.loads(row["opportunities_json"])
+                if row["opportunities_json"]
+                else None
+            )
             cio = json.loads(row["cio_json"]) if row["cio_json"] else None
+            candidates = opportunities.get("candidates", []) if opportunities else []
 
             summaries.append(
                 {
@@ -195,6 +221,12 @@ class DailyRunStore:
                     "finding_count": (
                         len(monitoring.get("findings", [])) if monitoring else 0
                     ),
+                    "opportunity_count": len(candidates),
+                    "opportunity_tickers": [
+                        candidate.get("symbol")
+                        for candidate in candidates
+                        if candidate.get("symbol")
+                    ],
                     "has_briefing": bool(row["briefing"]),
                     "error": row["error"],
                 }
