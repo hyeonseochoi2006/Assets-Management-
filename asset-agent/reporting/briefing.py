@@ -23,9 +23,11 @@ INSTRUMENT-AWARE REPORTING
 - LEVERAGED_ETF must explicitly preserve the stated leverage/inverse target, reset period, derivatives/path-dependency, compounding/volatility-drag, liquidity, and structural warnings when present.
 - Never turn a daily leverage target into a multi-day expected return.
 - Never calculate a wipeout/total-loss threshold from the leverage multiple.
-- An exact percentage threshold for total loss/wipeout may appear only when the source report explicitly preserves that exact threshold as independently VERIFIED by the Product Data Auditor.
-- If exact threshold verification is absent or unclear, use only a non-numeric warning about rapid or potentially complete loss.
-- WIPEOUT_THRESHOLD_STATUS is internal metadata. Use it to decide whether an exact threshold is permitted, but never print the literal marker in the CEO report.
+- An exact or approximate percentage threshold for total loss/wipeout may appear only when the source report contains WIPEOUT_THRESHOLD_STATUS: VERIFIED and its VERIFIED_CLAIM from the Product Data Auditor.
+- When a VERIFIED_CLAIM exists, include that audited warning once in the ETF/product-structure or risk section. Preserve every qualifier from the claim, including words such as approximately, intraday, during the trading day, approaches, or similar conditions.
+- Never convert a verified prospectus warning into a more precise number or a mechanical liquidation formula.
+- If exact threshold verification is absent, NOT_VERIFIED, or unclear, use only a non-numeric warning about rapid or potentially complete loss.
+- WIPEOUT_THRESHOLD_STATUS and VERIFIED_CLAIM are internal metadata. Use them as evidence controls but never print the literal metadata line in the CEO report.
 - UNKNOWN must be presented as an identity/structure verification problem, not silently converted into a stock analysis.
 
 PRODUCT DATA AUDIT
@@ -118,6 +120,7 @@ def run_korean_ceo_brief(
     context_parts.append(f"SOURCE INTERNAL REPORT:\n{source_report}")
     context_parts.append(
         "Prepare the Korean CEO report now. Preserve the instrument type, audit status, facts, and numeric values exactly. "
+        "If an independently VERIFIED wipeout-threshold claim is present, preserve its exact qualifiers; otherwise do not create a numeric threshold. "
         "Do not invent any investor limit, risk score, numeric wipeout threshold, or new recommendation. Preserve the CIO's materiality and escalation judgment."
     )
 
@@ -127,7 +130,7 @@ def run_korean_ceo_brief(
     if "LEVERAGED_ETF" in source_report and "WIPEOUT_THRESHOLD_STATUS: VERIFIED" not in source_report:
         report = sanitize_downstream_text(report, threshold_verified=False)
 
-    # Internal verification metadata must never leak into the CEO-facing report.
+    # Internal verification metadata controls the report but must not be printed.
     report = "\n".join(
         line
         for line in report.splitlines()
