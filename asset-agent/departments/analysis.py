@@ -4,13 +4,17 @@ from departments.bear_case import run_bear_case
 from departments.data_auditor import run_data_audit
 from departments.etf import run_etf_analysis
 from departments.leveraged_etf import run_leveraged_etf_analysis
+from departments.product_data_auditor import run_product_data_audit
 from research.evidence_pack import build_evidence_pack
 from research.instrument_router import classify_instrument
 from research.models import (
     AnalysisLeadAssessment,
     DataAuditReport,
+    ETFAnalysisAssessment,
     EvidencePack,
     InstrumentRouteAssessment,
+    LeveragedETFAnalysisAssessment,
+    ProductDataAuditReport,
 )
 
 
@@ -143,18 +147,42 @@ def _run_stock_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
     )
 
 
+def _safe_product_audit(
+    ticker: str,
+    route: InstrumentRouteAssessment,
+    assessment: ETFAnalysisAssessment | LeveragedETFAnalysisAssessment,
+) -> ProductDataAuditReport:
+    try:
+        return run_product_data_audit(route, assessment)
+    except Exception as exc:
+        return ProductDataAuditReport(
+            ticker=ticker,
+            overall_quality="LOW",
+            material_conflict=False,
+            checked_claims=[],
+            conflicts=[],
+            unverified_claims=["Product Data Auditor unavailable for this run."],
+            notes=[
+                f"Product Data Auditor error type: {type(exc).__name__}",
+                "Do not treat unaudited product figures as verified evidence.",
+            ],
+        )
+
+
 def _run_etf_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
     assessment = run_etf_analysis(ticker, route)
+    audit = _safe_product_audit(ticker, route, assessment)
     return "\n\n".join(
         [
             "=== AGENT INTELLIGENCE v2 · ETF PRODUCT RESEARCH ===",
             "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
             "ETF RESEARCH SPECIALIST:\n" + assessment.model_dump_json(indent=2),
+            "PRODUCT DATA AUDITOR:\n" + audit.model_dump_json(indent=2),
             (
                 "PROCESS NOTE:\n"
                 "This instrument was analyzed as an ETF product, not as an operating company. "
                 "Company revenue/profit/FCF analysis was intentionally not used. "
-                "A separate product-data audit layer is not yet active in this phase. "
+                "The Product Data Auditor independently re-checks decision-critical product claims and may mark them VERIFIED, CONFLICT, or UNVERIFIED. "
                 "This is research for Portfolio, Risk, and CIO; it is not a final BUY/SELL decision."
             ),
         ]
@@ -163,16 +191,18 @@ def _run_etf_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> 
 
 def _run_leveraged_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
     assessment = run_leveraged_etf_analysis(ticker, route)
+    audit = _safe_product_audit(ticker, route, assessment)
     return "\n\n".join(
         [
             "=== AGENT INTELLIGENCE v2 · LEVERAGED ETF PRODUCT RESEARCH ===",
             "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
             "LEVERAGED ETF SPECIALIST:\n" + assessment.model_dump_json(indent=2),
+            "PRODUCT DATA AUDITOR:\n" + audit.model_dump_json(indent=2),
             (
                 "PROCESS NOTE:\n"
                 "This instrument was analyzed as a leveraged/inverse ETF or ETP, not as an operating company. "
                 "Daily target, reset structure, derivatives, path dependency, volatility drag, and structural risks take priority. "
-                "A separate product-data audit layer is not yet active in this phase. "
+                "The Product Data Auditor independently re-checks decision-critical product claims and may mark them VERIFIED, CONFLICT, or UNVERIFIED. "
                 "This is research for Portfolio, Risk, and CIO; it is not a final BUY/SELL decision."
             ),
         ]
