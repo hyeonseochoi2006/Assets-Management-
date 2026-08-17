@@ -163,6 +163,12 @@ class ProductAuditClaim(BaseModel):
     verified_value: str | None = None
     sources: list[str] = Field(default_factory=list)
     note: str
+    source_identity_status: Literal[
+        "SOURCE_MATCHED",
+        "SOURCE_MISMATCHED",
+        "SOURCE_UNVERIFIED",
+    ] = "SOURCE_UNVERIFIED"
+    source_identity_note: str = ""
 
 
 class ProductDataConflict(BaseModel):
@@ -171,6 +177,13 @@ class ProductDataConflict(BaseModel):
     conflicting_evidence: str
     explanation: str
     material: bool
+    sources: list[str] = Field(default_factory=list)
+    source_identity_status: Literal[
+        "SOURCE_MATCHED",
+        "SOURCE_MISMATCHED",
+        "SOURCE_UNVERIFIED",
+    ] = "SOURCE_UNVERIFIED"
+    source_identity_note: str = ""
 
 
 class ProductDataAuditReport(BaseModel):
