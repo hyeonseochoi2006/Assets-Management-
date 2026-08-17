@@ -24,10 +24,22 @@ INSTRUMENT-AWARE REPORTING
 - Do not create a simple mechanical wipeout threshold unless the source report contains a verified official statement supporting that exact claim.
 - UNKNOWN must be presented as an identity/structure verification problem, not silently converted into a stock analysis.
 
+PRODUCT DATA AUDIT
+- ETF/LEVERAGED_ETF research may include a Product Data Auditor section.
+- Preserve VERIFIED / CONFLICT / UNVERIFIED labels for decision-critical product facts.
+- If AUM, NAV, expense ratio, benchmark, leverage target, reset frequency, derivatives structure, or prospectus warning is marked CONFLICT or UNVERIFIED, do not present it as a confirmed fact.
+- If Product Data Auditor was unavailable, clearly state that the product figures were not independently verified.
+
+RISK REPORTING
+- Prefer qualitative risk reporting: LOW / MODERATE / HIGH / CRITICAL plus PASS / PASS WITH LIMITS / REVIEW REQUIRED / REJECT.
+- Legacy numeric risk-score fields may be null by design.
+- Do not invent, estimate, restore, or display pseudo-precise risk scores such as 96 or 97 when the source report does not contain a calibrated score.
+- If a numeric risk score is null, omit it completely. Show the qualitative risk level and verdict instead.
+
 RULES:
 - Write the report in Korean. Keep stock tickers, fund/product names, standard finance abbreviations, and literal status tokens when useful.
 - Preserve every factual number exactly as supplied. Do not recalculate, round, reinterpret, or invent numbers.
-- Never invent prices, portfolio values, holdings, target weights, maximum position sizes, sector caps, risk limits, or market data.
+- Never invent prices, portfolio values, holdings, target weights, maximum position sizes, sector caps, risk limits, risk scores, or market data.
 - If the investor policy says numeric limits are NOT CONFIGURED, say clearly in Korean that the numeric position limit is not configured and CEO policy is required. Do not provide a percentage range.
 - Treat UNAVAILABLE and missing data as genuinely unavailable.
 - Preserve disagreements, warnings, BLOCKED/REJECT/REVIEW REQUIRED conditions, and important caveats from the source report.
@@ -43,17 +55,18 @@ For a security-analysis brief, use this structure when applicable:
 1. 종목/상품 및 유형
 2. 핵심 결론
 3. 회사 분석(STOCK) 또는 ETF/상품 구조 분석(ETF/LEVERAGED_ETF)
-4. 포트폴리오 적합성
-5. 위험
-6. 실행 관점
-7. 주요 상승 요인
-8. 주요 하락 요인
-9. 포지션 한도
-10. 매수 전 확인사항
-11. 부족한 정보
-12. CIO 종합 의견
-13. CEO 에스컬레이션: 없음 / 위험 / 기회 / 추가 분석 요청 / 결정 필요
-14. CEO 행동: 필요 / 불필요
+4. 데이터 검증: STOCK은 Data Auditor, ETF 계열은 Product Data Auditor의 핵심 VERIFIED/CONFLICT/UNVERIFIED만 요약
+5. 포트폴리오 적합성
+6. 위험: 정성 등급 + verdict 중심, 미보정 숫자 score 금지
+7. 실행 관점
+8. 주요 상승 요인
+9. 주요 하락 요인
+10. 포지션 한도
+11. 매수 전 확인사항
+12. 부족한 정보
+13. CIO 종합 의견
+14. CEO 에스컬레이션: 없음 / 위험 / 기회 / 추가 분석 요청 / 결정 필요
+15. CEO 행동: 필요 / 불필요
 
 For a whole-portfolio review, use this structure:
 1. 포트폴리오 상태
@@ -100,8 +113,8 @@ def run_korean_ceo_brief(
 
     context_parts.append(f"SOURCE INTERNAL REPORT:\n{source_report}")
     context_parts.append(
-        "Prepare the Korean CEO report now. Preserve the instrument type, facts, and numeric values exactly. "
-        "Do not invent any investor limit or new recommendation. Preserve the CIO's materiality and escalation judgment."
+        "Prepare the Korean CEO report now. Preserve the instrument type, audit status, facts, and numeric values exactly. "
+        "Do not invent any investor limit, risk score, or new recommendation. Preserve the CIO's materiality and escalation judgment."
     )
 
     result = Runner.run_sync(briefing_agent, "\n\n".join(context_parts))
