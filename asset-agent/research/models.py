@@ -93,3 +93,64 @@ class BearCaseAssessment(BaseModel):
     downside_scenarios: list[str] = Field(default_factory=list)
     key_unknowns: list[str] = Field(default_factory=list)
     recommended_followup: str
+
+
+class InstrumentRouteAssessment(BaseModel):
+    ticker: str
+    route: Literal["STOCK", "ETF", "LEVERAGED_ETF", "UNKNOWN"]
+    official_name: str | None = None
+    broker_security_type: str | None = None
+    leverage_target: str | None = None
+    reset_frequency: str | None = None
+    classification_source: str
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    reasons: list[str] = Field(default_factory=list)
+    missing_or_unverified: list[str] = Field(default_factory=list)
+
+
+class ETFAnalysisAssessment(BaseModel):
+    ticker: str
+    official_name: str
+    as_of_date: str
+    objective: str
+    benchmark: str | None = None
+    expense_ratio: str | None = None
+    nav: str | None = None
+    market_price: str | None = None
+    aum: str | None = None
+    liquidity: str
+    holdings_and_concentration: str
+    tracking_and_premium_discount: str
+    derivatives_exposure: str
+    key_risks: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    data_quality: Literal["HIGH", "MEDIUM", "LOW"]
+    confidence_score: int = Field(ge=0, le=100)
+    sources: list[str] = Field(default_factory=list)
+
+
+class LeveragedETFAnalysisAssessment(BaseModel):
+    ticker: str
+    official_name: str
+    as_of_date: str
+    objective: str
+    benchmark: str | None = None
+    daily_target: str | None = None
+    reset_frequency: str | None = None
+    leverage_mechanism: str
+    expense_ratio: str | None = None
+    nav: str | None = None
+    market_price: str | None = None
+    aum: str | None = None
+    liquidity: str
+    derivatives_exposure: str
+    path_dependency_and_compounding: str
+    volatility_drag: str
+    counterparty_and_structure_risk: str
+    holding_period_warning: str
+    total_loss_warning: str
+    key_risks: list[str] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    data_quality: Literal["HIGH", "MEDIUM", "LOW"]
+    confidence_score: int = Field(ge=0, le=100)
+    sources: list[str] = Field(default_factory=list)
