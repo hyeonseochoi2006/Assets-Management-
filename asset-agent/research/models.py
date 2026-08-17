@@ -154,3 +154,30 @@ class LeveragedETFAnalysisAssessment(BaseModel):
     data_quality: Literal["HIGH", "MEDIUM", "LOW"]
     confidence_score: int = Field(ge=0, le=100)
     sources: list[str] = Field(default_factory=list)
+
+
+class ProductAuditClaim(BaseModel):
+    topic: str
+    reported_value: str | None = None
+    status: Literal["VERIFIED", "CONFLICT", "UNVERIFIED"]
+    verified_value: str | None = None
+    sources: list[str] = Field(default_factory=list)
+    note: str
+
+
+class ProductDataConflict(BaseModel):
+    topic: str
+    specialist_claim: str
+    conflicting_evidence: str
+    explanation: str
+    material: bool
+
+
+class ProductDataAuditReport(BaseModel):
+    ticker: str
+    overall_quality: Literal["HIGH", "MEDIUM", "LOW"]
+    material_conflict: bool
+    checked_claims: list[ProductAuditClaim] = Field(default_factory=list)
+    conflicts: list[ProductDataConflict] = Field(default_factory=list)
+    unverified_claims: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
