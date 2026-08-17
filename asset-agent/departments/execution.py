@@ -1,6 +1,11 @@
 from agents import Agent, Runner
 from pydantic import BaseModel
 
+from research.product_claim_guardrails import (
+    report_has_verified_wipeout_threshold,
+    sanitize_downstream_text,
+)
+
 
 class ExecutionAssessment(BaseModel):
     ticker: str
@@ -30,6 +35,7 @@ You receive:
 
 The research report may route the candidate as STOCK, ETF, LEVERAGED_ETF, or UNKNOWN.
 Respect the instrument route. Do not treat an ETF as an operating company.
+If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, do not calculate, infer, or state any exact percentage threshold for total loss/wipeout.
 
 You DO NOT execute trades.
 You DO NOT make the final buy decision.
@@ -54,6 +60,7 @@ LEVERAGED ETF RULES:
 - Do not assume a leveraged/inverse ETF is allowed merely because it is exchange traded.
 - If the CEO allowed investment universe does not explicitly resolve whether leveraged ETFs are permitted, list that as missing policy and use WAIT or INSUFFICIENT DATA rather than proposing an actionable entry.
 - Do not translate a daily leverage target into a multi-day expected return.
+- Do not manufacture a numeric total-loss/wipeout threshold from the leverage multiple.
 
 IMPORTANT:
 - Do not invent current prices, spreads, volume, volatility, NAV, or market conditions.
@@ -127,10 +134,45 @@ Do not invent numeric investor limits.
     )
     output = result.final_output
 
+    timing_considerations = list(output.timing_considerations)
+    execution_risks = list(output.execution_risks)
+    conditions_before_execution = list(output.conditions_before_execution)
+    missing_data = list(output.missing_data)
+
+    threshold_guard_active = (
+        "WIPEOUT_THRESHOLD_STATUS:" in analysis_report
+        and not report_has_verified_wipeout_threshold(analysis_report)
+    )
+    if threshold_guard_active:
+        timing_considerations = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in timing_considerations
+        ]
+        execution_risks = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in execution_risks
+        ]
+        conditions_before_execution = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in conditions_before_execution
+        ]
+        missing_data = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in missing_data
+        ]
+
     if "numeric position limits are NOT CONFIGURED" in execution_constraints:
         output.max_position_pct = None
         missing_item = "User-specific numeric position limit: NOT CONFIGURED"
-        if missing_item not in output.missing_data:
-            output.missing_data.append(missing_item)
+        if missing_item not in missing_data:
+            missing_data.append(missing_item)
 
-    return output
+    return output.model_copy(
+        update={
+            "timing_considerations": timing_considerations,
+            "execution_risks": execution_risks,
+            "conditions_before_execution": conditions_before_execution,
+            "missing_data": missing_data,
+            "max_position_pct": output.max_position_pct,
+        }
+    )
