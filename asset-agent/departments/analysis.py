@@ -16,6 +16,10 @@ from research.models import (
     LeveragedETFAnalysisAssessment,
     ProductDataAuditReport,
 )
+from research.product_claim_guardrails import (
+    sanitize_leveraged_etf_assessment,
+    sanitize_product_audit_for_downstream,
+)
 
 
 analysis_lead_agent = Agent(
@@ -190,12 +194,16 @@ def _run_etf_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> 
 
 
 def _run_leveraged_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
-    assessment = run_leveraged_etf_analysis(ticker, route)
-    audit = _safe_product_audit(ticker, route, assessment)
+    raw_assessment = run_leveraged_etf_analysis(ticker, route)
+    raw_audit = _safe_product_audit(ticker, route, raw_assessment)
+    assessment, wipeout_marker = sanitize_leveraged_etf_assessment(raw_assessment, raw_audit)
+    audit = sanitize_product_audit_for_downstream(raw_audit)
+
     return "\n\n".join(
         [
             "=== AGENT INTELLIGENCE v2 · LEVERAGED ETF PRODUCT RESEARCH ===",
             "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
+            wipeout_marker,
             "LEVERAGED ETF SPECIALIST:\n" + assessment.model_dump_json(indent=2),
             "PRODUCT DATA AUDITOR:\n" + audit.model_dump_json(indent=2),
             (
@@ -203,6 +211,7 @@ def _run_leveraged_product_analysis(ticker: str, route: InstrumentRouteAssessmen
                 "This instrument was analyzed as a leveraged/inverse ETF or ETP, not as an operating company. "
                 "Daily target, reset structure, derivatives, path dependency, volatility drag, and structural risks take priority. "
                 "The Product Data Auditor independently re-checks decision-critical product claims and may mark them VERIFIED, CONFLICT, or UNVERIFIED. "
+                "Exact numeric total-loss/wipeout thresholds are removed unless the dedicated audit claim is explicitly VERIFIED from reliable primary evidence. "
                 "This is research for Portfolio, Risk, and CIO; it is not a final BUY/SELL decision."
             ),
         ]
