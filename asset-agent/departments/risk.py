@@ -4,6 +4,10 @@ from agents import Agent, Runner
 from pydantic import BaseModel
 
 from policies.risk_rubric import aggregate_risk_level, enforce_minimum_review_verdict
+from research.correlation_guardrails import (
+    sanitize_unverified_correlation_text,
+    unverified_correlation_message,
+)
 from research.product_claim_guardrails import (
     report_has_verified_wipeout_threshold,
     sanitize_downstream_text,
@@ -58,8 +62,15 @@ For STOCK research, the report may contain a Shared Evidence Pack, Data Auditor 
 Treat Data Auditor CONFLICT/UNVERIFIED items and Bear Case thesis-breakers as explicit risk inputs. Do not erase them because the Analysis Lead is favorable.
 
 For ETF/LEVERAGED_ETF research, the report may contain a Product Data Auditor report.
-Treat Product Data Auditor CONFLICT/UNVERIFIED items as explicit risk/data-quality inputs. Never silently use a CONFLICT or UNVERIFIED AUM, NAV, expense ratio, benchmark, leverage target, reset period, derivatives claim, or prospectus warning as verified fact.
+Treat Product Data Auditor CONFLICT/UNVERIFIED items as explicit risk/data-quality inputs.
+Treat SOURCE_MISMATCHED evidence as rejected contamination, not as a valid product-data conflict.
+Never silently use a CONFLICT, UNVERIFIED, or source-mismatched AUM, NAV, expense ratio, benchmark, leverage target, reset period, derivatives claim, or prospectus warning as verified fact.
 If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, do not calculate, infer, or state any exact percentage threshold for total loss/wipeout.
+
+CORRELATION RULE
+- Read correlation_status from the Portfolio Agent report.
+- If correlation_status=UNVERIFIED, do not state or imply that the candidate has high/low/positive/negative measured correlation with existing holdings.
+- Sector, industry, benchmark, or holdings overlap may still be discussed when separately supported, but do not relabel overlap as correlation.
 
 Your job is NOT to decide whether the investor should buy.
 Your job is to determine whether the proposed investment creates acceptable or unacceptable risk.
@@ -73,7 +84,7 @@ Evaluate as applicable:
 - Liquidity risk
 - Execution risk
 - Downside scenarios
-- Correlation/overlap with existing holdings
+- Verified correlation/overlap with existing holdings when actually available
 - Material evidence conflicts and missing verification
 - Bear Case thesis-breakers and disconfirming evidence
 
@@ -154,6 +165,8 @@ INVESTOR RISK LIMITS:
 Evaluate the risk of adding or maintaining {ticker} within this portfolio.
 Respect the instrument route in the research report.
 Preserve Data Auditor, Product Data Auditor, and Bear Case dissent when present.
+Reject SOURCE_MISMATCHED product data.
+Respect the Portfolio Agent correlation_status; do not invent measured correlation.
 Use qualitative risk levels, not precise numeric scores.
 Do not make the final buy decision.
 Do not invent numeric investor limits.
@@ -203,6 +216,24 @@ Do not invent numeric investor limits.
             sanitize_downstream_text(item, threshold_verified=False)
             for item in missing_data
         ]
+
+    correlation_verified = '"correlation_status": "VERIFIED"' in portfolio_report
+    if not correlation_verified:
+        stress_scenarios = [
+            sanitize_unverified_correlation_text(item, verified=False)
+            for item in stress_scenarios
+        ]
+        major_risks = [
+            sanitize_unverified_correlation_text(item, verified=False)
+            for item in major_risks
+        ]
+        missing_data = [
+            sanitize_unverified_correlation_text(item, verified=False)
+            for item in missing_data
+        ]
+        correlation_message = unverified_correlation_message()
+        if correlation_message not in missing_data:
+            missing_data.append(correlation_message)
 
     # Deterministic guardrail: policy-free percentages must never become hard limits.
     if "numeric position limits are NOT CONFIGURED" in risk_limits:
