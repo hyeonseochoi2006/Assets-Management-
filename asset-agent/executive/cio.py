@@ -9,6 +9,10 @@ from departments.portfolio import run_portfolio_assessment
 from departments.risk import run_risk_assessment
 from policies.ceo_operating_policy import get_full_operating_policy
 from policies.investment_policy import EXECUTION_CONSTRAINTS, RISK_POLICY
+from research.product_claim_guardrails import (
+    report_has_verified_wipeout_threshold,
+    sanitize_downstream_text,
+)
 
 
 PipelineStatusCallback = Callable[[str, str], None]
@@ -43,6 +47,7 @@ A Product Data Auditor material conflict remains unresolved until later reliable
 Do not repeat a specialist AUM, NAV, expense ratio, benchmark, leverage target, reset frequency, derivatives claim, or prospectus warning as verified fact when the Product Data Auditor marks it CONFLICT or UNVERIFIED.
 For leveraged/inverse products, preserve the stated target/reset structure, derivatives/path-dependency warnings, and product-specific missing data.
 Do not transform a daily leverage target into a multi-day expected-return claim.
+If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, never calculate, infer, or state an exact percentage threshold for total loss/wipeout. Use a non-numeric loss warning only.
 
 RISK REPORTING
 - Risk is now primarily qualitative: LOW / MODERATE / HIGH / CRITICAL plus the Risk Agent verdict.
@@ -223,6 +228,7 @@ Respect and preserve the instrument route.
 Preserve Data Auditor, Product Data Auditor, and Bear Case dissent when present.
 Do not promote CONFLICT/UNVERIFIED product data to verified facts.
 Preserve leveraged/inverse product structure and path-dependency warnings when present.
+If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, do not calculate or state any exact percentage threshold for total loss/wipeout.
 Use qualitative risk level + verdict; do not invent or restore a precise numeric risk score.
 Do not make the final investment decision.
 Do not invent numeric investor limits.
@@ -236,4 +242,12 @@ Classify whether the CEO actually needs to be interrupted and state the escalati
         raise
     _emit_status(status_callback, "CIO", "DONE")
 
-    return portfolio_snapshot, cio_result.final_output
+    cio_report = cio_result.final_output
+    threshold_guard_active = (
+        "WIPEOUT_THRESHOLD_STATUS:" in analysis_report
+        and not report_has_verified_wipeout_threshold(analysis_report)
+    )
+    if threshold_guard_active:
+        cio_report = sanitize_downstream_text(cio_report, threshold_verified=False)
+
+    return portfolio_snapshot, cio_report
