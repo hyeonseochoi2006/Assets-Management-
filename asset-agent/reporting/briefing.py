@@ -2,6 +2,7 @@ from agents import Agent, Runner
 
 from policies.ceo_operating_policy import get_full_operating_policy
 from policies.investment_policy import RISK_POLICY
+from research.product_claim_guardrails import sanitize_downstream_text
 
 
 briefing_agent = Agent(
@@ -21,7 +22,9 @@ INSTRUMENT-AWARE REPORTING
 - ETF must be described as a fund/product, not an operating company. Use headings such as "ETF/상품 분석" or "상품 구조" instead of "회사 분석".
 - LEVERAGED_ETF must explicitly preserve the stated leverage/inverse target, reset period, derivatives/path-dependency, compounding/volatility-drag, liquidity, and structural warnings when present.
 - Never turn a daily leverage target into a multi-day expected return.
-- Do not create a simple mechanical wipeout threshold unless the source report contains a verified official statement supporting that exact claim.
+- Never calculate a wipeout/total-loss threshold from the leverage multiple.
+- An exact percentage threshold for total loss/wipeout may appear only when the source report explicitly preserves that exact threshold as independently VERIFIED by the Product Data Auditor.
+- If exact threshold verification is absent or unclear, use only a non-numeric warning about rapid or potentially complete loss.
 - UNKNOWN must be presented as an identity/structure verification problem, not silently converted into a stock analysis.
 
 PRODUCT DATA AUDIT
@@ -114,11 +117,20 @@ def run_korean_ceo_brief(
     context_parts.append(f"SOURCE INTERNAL REPORT:\n{source_report}")
     context_parts.append(
         "Prepare the Korean CEO report now. Preserve the instrument type, audit status, facts, and numeric values exactly. "
-        "Do not invent any investor limit, risk score, or new recommendation. Preserve the CIO's materiality and escalation judgment."
+        "Do not invent any investor limit, risk score, numeric wipeout threshold, or new recommendation. Preserve the CIO's materiality and escalation judgment."
     )
 
     result = Runner.run_sync(briefing_agent, "\n\n".join(context_parts))
-    return result.final_output
+    report = result.final_output
+
+    # Final deterministic presentation guardrail. Unless the CIO report itself
+    # explicitly carries a verified threshold marker, do not let a generated
+    # percentage + total-loss claim reach the CEO screen. This is intentionally
+    # conservative: hiding a verified threshold is safer than inventing one.
+    if "LEVERAGED_ETF" in source_report and "WIPEOUT_THRESHOLD_STATUS: VERIFIED" not in source_report:
+        report = sanitize_downstream_text(report, threshold_verified=False)
+
+    return report
 
 
 def render_briefing(ticker: str, portfolio_snapshot: str, cio_report: str) -> str:
