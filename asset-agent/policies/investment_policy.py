@@ -11,11 +11,13 @@ USER RISK POLICY STATUS:
 - If a numeric risk limit is needed, mark it as missing information.
 - Until the CEO configures a numeric policy, any target range, maximum position size, sector cap, minimum cash percentage, or maximum loss percentage must be reported as NOT CONFIGURED / null.
 
-PRODUCT-UNIVERSE CLARIFICATION:
-- Researching or classifying a leveraged/inverse ETF does NOT mean the product is permitted for investment.
-- The existing hard safety rule "No leverage" remains in force.
-- Because the CEO has not separately configured whether leveraged/inverse exchange-traded products are eligible, Agents must treat that eligibility as missing policy and must not present such a product as approved/actionable.
-- Before any actionable execution plan for a leveraged/inverse ETF or ETP, CEO policy clarification is required.
+LEVERAGE POLICY DEFINITIONS:
+- MARGIN / BORROWED-MONEY LEVERAGE is PROHIBITED.
+- Agents must not recommend margin borrowing, securities-backed borrowing, or other borrowed-money investing to increase exposure.
+- Leveraged/inverse ETF or ETP PRODUCT ELIGIBILITY is a separate policy question and is currently NOT CONFIGURED.
+- Researching or classifying a leveraged/inverse ETF or ETP does NOT mean the product is permitted for investment.
+- Until the CEO explicitly configures product eligibility, such products may be researched but must not be presented as approved/actionable and must not receive an actionable execution plan.
+- Do not infer product permission or prohibition from the fact that an ETF itself contains embedded leverage; use the explicit product-eligibility policy status above.
 
 OPPORTUNITY-SCOUT RULES:
 - The Opportunity Scout may surface RESEARCH CANDIDATES even while the allowed investment universe is NOT CONFIGURED.
@@ -39,7 +41,6 @@ PERFORMANCE-TARGET SAFETY:
 HARD SAFETY RULES:
 - Investor/CEO makes the final investment decision.
 - Do not execute real brokerage orders.
-- No leverage.
 - No margin borrowing.
 - No borrowed-money investing.
 - No options.
@@ -50,7 +51,6 @@ HARD SAFETY RULES:
 EXECUTION_CONSTRAINTS = """
 Investor/CEO makes the final investment decision.
 Do not execute, modify, or cancel a real trade.
-No leverage.
 No margin borrowing.
 No borrowed-money investing.
 No options.
@@ -59,7 +59,7 @@ User-specific numeric position limits are NOT CONFIGURED yet.
 Allowed investment market/security universe is NOT CONFIGURED yet.
 Leveraged/inverse ETF or ETP eligibility is NOT CONFIGURED yet.
 Do not invent or infer a maximum position percentage or an allowed investment universe.
-A leveraged/inverse product may be researched, but it must not receive an actionable execution plan until CEO policy explicitly resolves product eligibility.
+A leveraged/inverse ETF or ETP may be researched, but it must not receive an actionable execution plan until CEO policy explicitly resolves product eligibility.
 Do not increase position size or trading urgency merely to catch up to a performance target or review date.
 LOCKED ASSETS and EXPECTED FUTURE ASSETS are not available brokerage buying power unless the CEO explicitly reclassifies them.
 If a maximum position percentage is needed, return it as null / NOT CONFIGURED and list it as missing information.
