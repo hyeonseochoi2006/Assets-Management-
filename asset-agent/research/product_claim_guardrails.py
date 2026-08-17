@@ -76,11 +76,7 @@ def verified_total_loss_thresholds(audit: ProductDataAuditReport) -> set[str]:
 
 
 def verified_total_loss_threshold_details(audit: ProductDataAuditReport) -> list[str]:
-    """Return full audited wording so qualifiers are preserved downstream.
-
-    The percentage alone is insufficient. For example, 'approximately 33% during
-    the trading day' must not become an exact 33.0% mechanical liquidation rule.
-    """
+    """Return full audited wording so qualifiers are preserved downstream."""
     details: list[str] = []
     for claim in _verified_threshold_claims(audit):
         source_text = "; ".join(claim.sources)
@@ -185,18 +181,11 @@ def sanitize_leveraged_etf_assessment(
 
     sanitized = assessment.model_copy(update=updates)
     if verified_details:
-        marker = "\n".join(
-            [
-                "WIPEOUT_THRESHOLD_STATUS: VERIFIED",
-                *[
-                    "WIPEOUT_THRESHOLD_VERIFIED_CLAIM: " + detail
-                    for detail in verified_details
-                ],
-                (
-                    "WIPEOUT_THRESHOLD_RULE: preserve the official qualifiers exactly; "
-                    "do not convert the verified warning into a mechanical liquidation formula."
-                ),
-            ]
+        detail_text = " || ".join(verified_details).replace("\n", " ")
+        marker = (
+            "WIPEOUT_THRESHOLD_STATUS: VERIFIED | VERIFIED_CLAIM: "
+            + detail_text
+            + " | RULE: preserve official qualifiers exactly; never convert this warning into a mechanical liquidation formula."
         )
     else:
         marker = (
