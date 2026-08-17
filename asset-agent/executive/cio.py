@@ -9,6 +9,7 @@ from departments.portfolio import run_portfolio_assessment
 from departments.risk import run_risk_assessment
 from policies.ceo_operating_policy import get_full_operating_policy
 from policies.investment_policy import EXECUTION_CONSTRAINTS, RISK_POLICY
+from research.correlation_guardrails import sanitize_unverified_correlation_text
 from research.product_claim_guardrails import (
     report_has_verified_wipeout_threshold,
     sanitize_downstream_text,
@@ -43,11 +44,18 @@ For ETF/LEVERAGED_ETF, the research report may contain:
 - ETF or Leveraged ETF Product Specialist
 - Product Data Auditor
 Treat the Product Data Auditor as an independent verification voice. VERIFIED / CONFLICT / UNVERIFIED statuses must be preserved.
-A Product Data Auditor material conflict remains unresolved until later reliable evidence resolves it.
-Do not repeat a specialist AUM, NAV, expense ratio, benchmark, leverage target, reset frequency, derivatives claim, or prospectus warning as verified fact when the Product Data Auditor marks it CONFLICT or UNVERIFIED.
+Treat SOURCE_MISMATCHED evidence as rejected source contamination. Never present a rejected mismatched-source number as product data and never describe it as one side of an official-data conflict.
+A Product Data Auditor material conflict remains unresolved only when the surviving conflict is based on identity-matched sources.
+Do not repeat a specialist AUM, shares outstanding, NAV, expense ratio, benchmark, leverage target, reset frequency, derivatives claim, or prospectus warning as verified fact when the Product Data Auditor marks it CONFLICT, UNVERIFIED, SOURCE_MISMATCHED, or SOURCE_UNVERIFIED.
 For leveraged/inverse products, preserve the stated target/reset structure, derivatives/path-dependency warnings, and product-specific missing data.
 Do not transform a daily leverage target into a multi-day expected-return claim.
 If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, never calculate, infer, or state an exact percentage threshold for total loss/wipeout. Use a non-numeric loss warning only.
+
+CORRELATION EVIDENCE
+- Read correlation_status from the Portfolio Agent report.
+- If correlation_status=UNVERIFIED, do not state that the candidate is highly/weakly/positively/negatively correlated with existing holdings.
+- Verified sector, industry, benchmark, or holdings overlap may still be described, but overlap must not be relabeled as measured correlation.
+- Do not claim diversification improves or worsens because of correlation unless correlation_status=VERIFIED. You may discuss concentration or thematic overlap separately when supported.
 
 RISK REPORTING
 - Risk is now primarily qualitative: LOW / MODERATE / HIGH / CRITICAL plus the Risk Agent verdict.
@@ -87,7 +95,7 @@ You must:
 - Do not infer product permission or prohibition from the margin/borrowing ban; use the explicit product-eligibility status.
 - Respect every hard risk limit that is explicitly configured in the investor policy.
 - If Risk Agent says REJECT, clearly mark the proposal as BLOCKED.
-- Never invent prices, financial figures, portfolio holdings, market conditions, target weights, maximum position sizes, sector caps, cash-reserve percentages, loss limits, or risk scores.
+- Never invent prices, financial figures, portfolio holdings, market conditions, target weights, maximum position sizes, sector caps, cash-reserve percentages, loss limits, risk scores, or correlation.
 - Never turn a current portfolio weight, qualitative risk level, analyst opinion, performance target, review date, or generic diversification rule into an investor limit.
 - If the investor policy says numeric position limits are NOT CONFIGURED, the Suggested position range section must say NOT CONFIGURED — CEO POLICY REQUIRED. Do not output any percentage range there.
 - If specialist reports contain a numeric limit that conflicts with an unconfigured policy, treat that numeric limit as invalid and ignore it.
@@ -102,9 +110,9 @@ You must:
 Return a concise report with these sections:
 1. Candidate and instrument type
 2. Research conclusion
-3. Evidence / product-data audit quality
+3. Evidence / product-data audit quality, including rejected source contamination when material
 4. Bear Case / structural dissent as applicable
-5. Portfolio conclusion
+5. Portfolio conclusion, preserving correlation_status
 6. Risk conclusion: qualitative level + verdict; do not invent a numeric risk score
 7. Execution conclusion
 8. Main upside
@@ -226,7 +234,9 @@ EXECUTION AGENT REPORT:
 Prepare the CIO decision brief under the CEO operating policy.
 Respect and preserve the instrument route.
 Preserve Data Auditor, Product Data Auditor, and Bear Case dissent when present.
+Reject SOURCE_MISMATCHED product data and do not convert it into an official-data conflict.
 Do not promote CONFLICT/UNVERIFIED product data to verified facts.
+Respect correlation_status; if UNVERIFIED, do not assert measured correlation.
 Preserve leveraged/inverse product structure and path-dependency warnings when present.
 If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, do not calculate or state any exact percentage threshold for total loss/wipeout.
 Use qualitative risk level + verdict; do not invent or restore a precise numeric risk score.
@@ -243,6 +253,11 @@ Classify whether the CEO actually needs to be interrupted and state the escalati
     _emit_status(status_callback, "CIO", "DONE")
 
     cio_report = cio_result.final_output
+
+    correlation_verified = '"correlation_status": "VERIFIED"' in portfolio_report
+    if not correlation_verified:
+        cio_report = sanitize_unverified_correlation_text(cio_report, verified=False)
+
     threshold_marker = next(
         (
             line.strip()
