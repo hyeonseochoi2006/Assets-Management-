@@ -2,8 +2,16 @@ from agents import Agent, Runner
 
 from departments.bear_case import run_bear_case
 from departments.data_auditor import run_data_audit
+from departments.etf import run_etf_analysis
+from departments.leveraged_etf import run_leveraged_etf_analysis
 from research.evidence_pack import build_evidence_pack
-from research.models import AnalysisLeadAssessment, DataAuditReport, EvidencePack
+from research.instrument_router import classify_instrument
+from research.models import (
+    AnalysisLeadAssessment,
+    DataAuditReport,
+    EvidencePack,
+    InstrumentRouteAssessment,
+)
 
 
 analysis_lead_agent = Agent(
@@ -11,7 +19,7 @@ analysis_lead_agent = Agent(
     instructions="""
 You are the Analysis Lead for an investment research team.
 
-You receive a shared Evidence Pack and an independent Data Audit.
+You receive a shared Evidence Pack and an independent Data Audit for an OPERATING-COMPANY STOCK.
 Your job is to interpret the evidence, not to search the web again and not to make the final investment decision.
 
 ANALYSIS RESPONSIBILITIES
@@ -72,7 +80,7 @@ SHARED EVIDENCE PACK:
 DATA AUDITOR REPORT:
 {audit.model_dump_json(indent=2)}
 
-Produce the Analysis Lead assessment.
+Produce the Analysis Lead assessment for this operating-company stock.
 Do not search for new facts.
 Do not make the final investment decision.
 """,
@@ -81,16 +89,14 @@ Do not make the final investment decision.
     return output.model_copy(update={"ticker": ticker.upper()})
 
 
-def run_analysis(ticker: str) -> str:
-    """Run Agent Intelligence v2 Phase A while preserving the legacy string interface."""
-    normalized_ticker = ticker.strip().upper()
-    evidence_pack = build_evidence_pack(normalized_ticker)
+def _run_stock_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
+    evidence_pack = build_evidence_pack(ticker)
 
     try:
         audit = run_data_audit(evidence_pack)
     except Exception as exc:
         audit = DataAuditReport(
-            ticker=normalized_ticker,
+            ticker=ticker,
             overall_quality="LOW",
             material_conflict=False,
             checked_claims=[],
@@ -99,7 +105,7 @@ def run_analysis(ticker: str) -> str:
             notes=[f"Data Auditor error type: {type(exc).__name__}"],
         )
 
-    lead = _run_analysis_lead(normalized_ticker, evidence_pack, audit)
+    lead = _run_analysis_lead(ticker, evidence_pack, audit)
 
     should_run_bear_case = (
         lead.bear_case_required
@@ -120,17 +126,81 @@ def run_analysis(ticker: str) -> str:
 
     return "\n\n".join(
         [
-            "=== AGENT INTELLIGENCE v2 · PHASE A ===",
-            "CANDIDATE:\n" + normalized_ticker,
+            "=== AGENT INTELLIGENCE v2 · STOCK RESEARCH ===",
+            "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
+            "CANDIDATE:\n" + ticker,
             "SHARED EVIDENCE PACK:\n" + evidence_pack.model_dump_json(indent=2),
             "DATA AUDITOR:\n" + audit.model_dump_json(indent=2),
             "ANALYSIS LEAD:\n" + lead.model_dump_json(indent=2),
             "BEAR CASE SPECIALIST:\n" + bear_case_json,
             (
                 "PROCESS NOTE:\n"
-                "Evidence was gathered once and shared across the research team. "
+                "The instrument was routed as STOCK. Evidence was gathered once and shared across the stock research team. "
                 "The Bear Case Specialist is conditional. This report is research for Portfolio, Risk, and CIO; "
                 "it is not a final BUY/SELL decision."
             ),
         ]
     )
+
+
+def _run_etf_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
+    assessment = run_etf_analysis(ticker, route)
+    return "\n\n".join(
+        [
+            "=== AGENT INTELLIGENCE v2 · ETF PRODUCT RESEARCH ===",
+            "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
+            "ETF RESEARCH SPECIALIST:\n" + assessment.model_dump_json(indent=2),
+            (
+                "PROCESS NOTE:\n"
+                "This instrument was analyzed as an ETF product, not as an operating company. "
+                "Company revenue/profit/FCF analysis was intentionally not used. "
+                "A separate product-data audit layer is not yet active in this phase. "
+                "This is research for Portfolio, Risk, and CIO; it is not a final BUY/SELL decision."
+            ),
+        ]
+    )
+
+
+def _run_leveraged_product_analysis(ticker: str, route: InstrumentRouteAssessment) -> str:
+    assessment = run_leveraged_etf_analysis(ticker, route)
+    return "\n\n".join(
+        [
+            "=== AGENT INTELLIGENCE v2 · LEVERAGED ETF PRODUCT RESEARCH ===",
+            "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
+            "LEVERAGED ETF SPECIALIST:\n" + assessment.model_dump_json(indent=2),
+            (
+                "PROCESS NOTE:\n"
+                "This instrument was analyzed as a leveraged/inverse ETF or ETP, not as an operating company. "
+                "Daily target, reset structure, derivatives, path dependency, volatility drag, and structural risks take priority. "
+                "A separate product-data audit layer is not yet active in this phase. "
+                "This is research for Portfolio, Risk, and CIO; it is not a final BUY/SELL decision."
+            ),
+        ]
+    )
+
+
+def _unknown_instrument_report(ticker: str, route: InstrumentRouteAssessment) -> str:
+    return "\n\n".join(
+        [
+            "=== AGENT INTELLIGENCE v2 · UNKNOWN INSTRUMENT ===",
+            "INSTRUMENT ROUTE:\n" + route.model_dump_json(indent=2),
+            (
+                "RESEARCH STATUS:\nINSUFFICIENT_DATA — instrument type could not be verified safely. "
+                "Do not analyze it as an operating company and do not make an investment decision until identity/structure is resolved."
+            ),
+        ]
+    )
+
+
+def run_analysis(ticker: str) -> str:
+    """Route the instrument before research while preserving the legacy string interface."""
+    normalized_ticker = ticker.strip().upper()
+    route = classify_instrument(normalized_ticker)
+
+    if route.route == "STOCK":
+        return _run_stock_analysis(normalized_ticker, route)
+    if route.route == "ETF":
+        return _run_etf_product_analysis(normalized_ticker, route)
+    if route.route == "LEVERAGED_ETF":
+        return _run_leveraged_product_analysis(normalized_ticker, route)
+    return _unknown_instrument_report(normalized_ticker, route)
