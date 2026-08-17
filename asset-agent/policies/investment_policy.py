@@ -5,10 +5,17 @@ USER RISK POLICY STATUS:
 - User-specific minimum cash reserve is NOT CONFIGURED yet.
 - User-specific maximum acceptable loss/drawdown is NOT CONFIGURED yet.
 - Allowed investment market/security universe is NOT CONFIGURED yet.
+- Leveraged/inverse ETF or ETP eligibility is NOT CONFIGURED yet.
 - Do not invent numeric limits or an allowed investment universe.
 - Do not infer numeric limits from current portfolio weights, risk scores, analyst opinions, performance targets, review dates, or generic diversification rules.
 - If a numeric risk limit is needed, mark it as missing information.
 - Until the CEO configures a numeric policy, any target range, maximum position size, sector cap, minimum cash percentage, or maximum loss percentage must be reported as NOT CONFIGURED / null.
+
+PRODUCT-UNIVERSE CLARIFICATION:
+- Researching or classifying a leveraged/inverse ETF does NOT mean the product is permitted for investment.
+- The existing hard safety rule "No leverage" remains in force.
+- Because the CEO has not separately configured whether leveraged/inverse exchange-traded products are eligible, Agents must treat that eligibility as missing policy and must not present such a product as approved/actionable.
+- Before any actionable execution plan for a leveraged/inverse ETF or ETP, CEO policy clarification is required.
 
 OPPORTUNITY-SCOUT RULES:
 - The Opportunity Scout may surface RESEARCH CANDIDATES even while the allowed investment universe is NOT CONFIGURED.
@@ -50,7 +57,9 @@ No options.
 Never override the Risk Agent.
 User-specific numeric position limits are NOT CONFIGURED yet.
 Allowed investment market/security universe is NOT CONFIGURED yet.
+Leveraged/inverse ETF or ETP eligibility is NOT CONFIGURED yet.
 Do not invent or infer a maximum position percentage or an allowed investment universe.
+A leveraged/inverse product may be researched, but it must not receive an actionable execution plan until CEO policy explicitly resolves product eligibility.
 Do not increase position size or trading urgency merely to catch up to a performance target or review date.
 LOCKED ASSETS and EXPECTED FUTURE ASSETS are not available brokerage buying power unless the CEO explicitly reclassifies them.
 If a maximum position percentage is needed, return it as null / NOT CONFIGURED and list it as missing information.
