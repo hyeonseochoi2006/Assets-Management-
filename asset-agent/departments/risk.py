@@ -56,7 +56,9 @@ LEVERAGED ETF RULES:
 - A daily leverage target must never be projected mechanically across multi-day holding periods.
 - Do not manufacture a total-loss threshold with simple arithmetic. Preserve official issuer/prospectus warnings instead.
 - Do not use company revenue/profit/FCF as evidence about a leveraged ETF product.
-- If the investor policy prohibits leverage/options but does not explicitly define whether leveraged ETFs are allowed, report the allowed-universe/policy question as NOT CONFIGURED rather than silently treating the product as permitted.
+- Margin borrowing and borrowed-money investing are prohibited.
+- Leveraged/inverse ETF or ETP product eligibility is a separate policy field. If it is NOT CONFIGURED, report that as missing policy and do not treat the product as approved/actionable.
+- Do not infer product permission or prohibition from the margin/borrowing ban; use the explicit product-eligibility status.
 
 SCORING:
 All individual risk scores must be between 0 and 100.
