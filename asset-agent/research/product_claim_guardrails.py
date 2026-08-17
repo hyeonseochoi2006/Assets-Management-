@@ -24,6 +24,7 @@ _GENERIC_TOTAL_LOSS_WARNING = (
     "Issuer/prospectus materials may warn of rapid and potentially complete loss in extreme conditions. "
     "No exact numeric total-loss threshold is verified for this report; do not infer one mechanically from the leverage multiple."
 )
+_REDACTED_THRESHOLD = "[UNVERIFIED NUMERIC TOTAL-LOSS THRESHOLD REDACTED]"
 
 
 def _percent_tokens(text: str | None) -> set[str]:
@@ -43,6 +44,16 @@ def _is_numeric_total_loss_claim(text: str | None) -> bool:
     return bool(_percent_tokens(text)) and _contains_total_loss_language(text)
 
 
+def _normalize_topic(topic: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", topic.strip().upper()).strip("_")
+
+
+def _redact_percentages(text: str | None) -> str | None:
+    if text is None:
+        return None
+    return _PERCENT_RE.sub(_REDACTED_THRESHOLD, text)
+
+
 def verified_total_loss_thresholds(audit: ProductDataAuditReport) -> set[str]:
     """Return only exact percent thresholds explicitly verified by Product Data Auditor.
 
@@ -53,13 +64,76 @@ def verified_total_loss_thresholds(audit: ProductDataAuditReport) -> set[str]:
     """
     verified: set[str] = set()
     for claim in audit.checked_claims:
-        topic = re.sub(r"[^A-Z0-9]+", "_", claim.topic.strip().upper()).strip("_")
-        if topic != "TOTAL_LOSS_NUMERIC_THRESHOLD":
+        if _normalize_topic(claim.topic) != "TOTAL_LOSS_NUMERIC_THRESHOLD":
             continue
         if claim.status != "VERIFIED" or not claim.sources:
             continue
         verified.update(_percent_tokens(claim.verified_value))
     return verified
+
+
+def sanitize_product_audit_for_downstream(
+    audit: ProductDataAuditReport,
+) -> ProductDataAuditReport:
+    """Redact exact numeric wipeout thresholds unless the dedicated claim is VERIFIED."""
+    sanitized_claims = []
+    for claim in audit.checked_claims:
+        if (
+            _normalize_topic(claim.topic) == "TOTAL_LOSS_NUMERIC_THRESHOLD"
+            and claim.status != "VERIFIED"
+        ):
+            sanitized_claims.append(
+                claim.model_copy(
+                    update={
+                        "reported_value": _redact_percentages(claim.reported_value),
+                        "verified_value": None,
+                        "note": _redact_percentages(claim.note),
+                    }
+                )
+            )
+        else:
+            sanitized_claims.append(claim)
+
+    sanitized_conflicts = []
+    for conflict in audit.conflicts:
+        combined = " ".join(
+            [
+                conflict.topic,
+                conflict.specialist_claim,
+                conflict.conflicting_evidence,
+                conflict.explanation,
+            ]
+        )
+        if _normalize_topic(conflict.topic) == "TOTAL_LOSS_NUMERIC_THRESHOLD" or _is_numeric_total_loss_claim(combined):
+            sanitized_conflicts.append(
+                conflict.model_copy(
+                    update={
+                        "specialist_claim": _redact_percentages(conflict.specialist_claim),
+                        "conflicting_evidence": _redact_percentages(conflict.conflicting_evidence),
+                        "explanation": _redact_percentages(conflict.explanation),
+                    }
+                )
+            )
+        else:
+            sanitized_conflicts.append(conflict)
+
+    sanitized_unverified = [
+        _redact_percentages(item) if _is_numeric_total_loss_claim(item) else item
+        for item in audit.unverified_claims
+    ]
+    sanitized_notes = [
+        _redact_percentages(item) if _is_numeric_total_loss_claim(item) else item
+        for item in audit.notes
+    ]
+
+    return audit.model_copy(
+        update={
+            "checked_claims": sanitized_claims,
+            "conflicts": sanitized_conflicts,
+            "unverified_claims": sanitized_unverified,
+            "notes": sanitized_notes,
+        }
+    )
 
 
 def _sanitize_text(text: str, allowed_thresholds: set[str]) -> str:
