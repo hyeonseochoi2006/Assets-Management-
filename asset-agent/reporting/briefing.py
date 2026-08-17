@@ -15,8 +15,17 @@ Internal agents may work in English. The CEO-facing report must be in Korean.
 The CEO should not be interrupted for routine noise. Preserve the CIO's escalation judgment.
 If the source report says there is NO MATERIAL CHANGE or CEO action is not required, do not manufacture urgency or end the report by demanding a decision.
 
+INSTRUMENT-AWARE REPORTING
+- Read and preserve the INSTRUMENT ROUTE from the source report when present: STOCK / ETF / LEVERAGED_ETF / UNKNOWN.
+- STOCK may use company/business/financial language.
+- ETF must be described as a fund/product, not an operating company. Use headings such as "ETF/상품 분석" or "상품 구조" instead of "회사 분석".
+- LEVERAGED_ETF must explicitly preserve the stated leverage/inverse target, reset period, derivatives/path-dependency, compounding/volatility-drag, liquidity, and structural warnings when present.
+- Never turn a daily leverage target into a multi-day expected return.
+- Do not create a simple mechanical wipeout threshold unless the source report contains a verified official statement supporting that exact claim.
+- UNKNOWN must be presented as an identity/structure verification problem, not silently converted into a stock analysis.
+
 RULES:
-- Write the report in Korean. Keep stock tickers, company names, standard finance abbreviations, and literal status tokens when useful.
+- Write the report in Korean. Keep stock tickers, fund/product names, standard finance abbreviations, and literal status tokens when useful.
 - Preserve every factual number exactly as supplied. Do not recalculate, round, reinterpret, or invent numbers.
 - Never invent prices, portfolio values, holdings, target weights, maximum position sizes, sector caps, risk limits, or market data.
 - If the investor policy says numeric limits are NOT CONFIGURED, say clearly in Korean that the numeric position limit is not configured and CEO policy is required. Do not provide a percentage range.
@@ -30,10 +39,10 @@ RULES:
 - LOCKED ASSETS and EXPECTED FUTURE ASSETS must not be described as currently available investment cash.
 - Prefer short headings and direct language suitable for a CEO reading on a phone.
 
-For a company-analysis brief, use this structure when applicable:
-1. 종목
+For a security-analysis brief, use this structure when applicable:
+1. 종목/상품 및 유형
 2. 핵심 결론
-3. 회사 분석
+3. 회사 분석(STOCK) 또는 ETF/상품 구조 분석(ETF/LEVERAGED_ETF)
 4. 포트폴리오 적합성
 5. 위험
 6. 실행 관점
@@ -91,7 +100,7 @@ def run_korean_ceo_brief(
 
     context_parts.append(f"SOURCE INTERNAL REPORT:\n{source_report}")
     context_parts.append(
-        "Prepare the Korean CEO report now. Preserve facts and numeric values exactly. "
+        "Prepare the Korean CEO report now. Preserve the instrument type, facts, and numeric values exactly. "
         "Do not invent any investor limit or new recommendation. Preserve the CIO's materiality and escalation judgment."
     )
 
@@ -103,12 +112,12 @@ def render_briefing(ticker: str, portfolio_snapshot: str, cio_report: str) -> st
     """CLI-compatible Korean presentation layer."""
     korean_report = run_korean_ceo_brief(
         source_report=cio_report,
-        report_type="COMPANY_ANALYSIS",
+        report_type="SECURITY_ANALYSIS",
         ticker=ticker,
         portfolio_snapshot=portfolio_snapshot,
     )
     return (
         f"=== ASSET MANAGEMENT CEO BRIEF ===\n"
-        f"종목: {ticker}\n\n"
+        f"종목/상품: {ticker}\n\n"
         f"{korean_report}\n"
     )
