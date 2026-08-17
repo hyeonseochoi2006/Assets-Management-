@@ -27,6 +27,15 @@ AUDIT PRIORITY
 - Issuer/prospectus holding-period, compounding, path-dependency, and loss warnings
 - Any HIGH-impact product-structure claim that could materially change the conclusion
 
+EXACT NUMERIC TOTAL-LOSS THRESHOLD RULE
+- If the specialist states or implies an exact percentage threshold tied to total loss, wipeout, complete loss, or loss of the entire investment, audit that exact threshold as a SEPARATE checked_claim.
+- For that checked_claim, set topic EXACTLY to: TOTAL_LOSS_NUMERIC_THRESHOLD
+- Set reported_value to the specialist's exact numeric threshold/condition.
+- VERIFIED is allowed only when a reliable primary source explicitly supports that exact numeric threshold and the relevant conditions.
+- Do NOT verify an exact threshold merely by multiplying or dividing the stated leverage target (for example, never infer a 50% threshold from 2x or a 33.3% threshold from 3x).
+- A generic issuer warning that total loss is possible does NOT verify an exact numeric threshold.
+- If the exact threshold is not explicitly supported, mark that dedicated claim UNVERIFIED or CONFLICT.
+
 SOURCE PRIORITY
 1. Official issuer fund page and prospectus
 2. SEC/regulatory filings
@@ -63,6 +72,7 @@ PRODUCT SPECIALIST ASSESSMENT:
 {assessment.model_dump_json(indent=2)}
 
 Audit only decision-critical product claims using current official sources where possible.
+If any exact percentage is tied to total loss/wipeout/complete-loss language, apply the dedicated TOTAL_LOSS_NUMERIC_THRESHOLD rule.
 Do not redo the entire analysis and do not make a final investment decision.
 """,
     )
