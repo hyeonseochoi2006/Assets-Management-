@@ -1,7 +1,14 @@
+from typing import Literal
+
 from agents import Agent, Runner
 from pydantic import BaseModel
 
 from policies.ceo_operating_policy import get_full_operating_policy
+from research.correlation_guardrails import (
+    correlation_is_verified,
+    sanitize_unverified_correlation_text,
+    unverified_correlation_message,
+)
 
 
 class PortfolioAssessment(BaseModel):
@@ -12,6 +19,8 @@ class PortfolioAssessment(BaseModel):
     max_weight_pct: float | None
     fit_score: int
     concentration_risk: str
+    correlation_status: Literal["VERIFIED", "UNVERIFIED"] = "UNVERIFIED"
+    correlation_note: str = ""
     recommendation: str
     reasons: list[str]
     missing_data: list[str]
@@ -46,10 +55,17 @@ Evaluate:
 - Risk/reward from the research report
 - Portfolio limits that are explicitly supplied
 
+CORRELATION EVIDENCE RULE
+- Quantitative correlation and thematic/holdings overlap are different concepts.
+- You may discuss sector, industry, benchmark, or holdings overlap when supported by supplied evidence.
+- Do NOT state that the candidate has high/low/positive/negative correlation with existing holdings unless the supplied input contains an explicit verified quantitative correlation dataset marked CORRELATION_DATA_VERIFIED.
+- If no such marker exists, set correlation_status=UNVERIFIED and state that measured correlation is unavailable.
+- Do not use an assumed correlation relationship to lower the fit score or to claim diversification is improved/worsened. Base those judgments on separately verified concentration or overlap evidence instead.
+
 PRODUCT-AWARE RULES:
 - For STOCK, evaluate company/sector concentration normally.
 - For ETF, evaluate benchmark exposure, holdings overlap, issuer/sector concentration, and product structure when available.
-- For LEVERAGED_ETF, explicitly account for leverage, daily reset/path dependency, derivatives exposure, and the possibility that underlying holdings overlap creates much more effective exposure than the ticker weight alone suggests.
+- For LEVERAGED_ETF, explicitly account for leverage, daily reset/path dependency, derivatives exposure, and the possibility that verified underlying holdings overlap creates much more effective exposure than the ticker weight alone suggests.
 - For UNKNOWN, use INSUFFICIENT DATA rather than guessing the product type.
 
 RULES:
@@ -99,7 +115,7 @@ Focus on:
 - The most important issues that genuinely deserve CEO attention
 
 RULES:
-- Never invent missing holdings, cash, sectors, prices, weights, or investor limits.
+- Never invent missing holdings, cash, sectors, prices, weights, correlation, or investor limits.
 - Treat UNAVAILABLE as missing data.
 - Do not issue buy or sell orders.
 - Do not make the final investment decision.
@@ -141,22 +157,61 @@ INVESTOR PORTFOLIO/RISK POLICY:
 
 Evaluate the portfolio fit for {ticker} using the instrument route in the research report.
 Do not make the final buy decision.
-Do not invent numeric investor limits.
+Do not invent numeric investor limits or quantitative correlation.
 """,
     )
     output = result.final_output
 
+    missing_data = list(output.missing_data)
+    reasons = list(output.reasons)
+    concentration_risk = output.concentration_risk
+
+    correlation_verified = correlation_is_verified(analysis_report, portfolio_snapshot)
+    if not correlation_verified:
+        reasons = [
+            sanitize_unverified_correlation_text(item, verified=False)
+            for item in reasons
+        ]
+        concentration_risk = sanitize_unverified_correlation_text(
+            concentration_risk,
+            verified=False,
+        )
+        correlation_message = unverified_correlation_message()
+        if correlation_message not in missing_data:
+            missing_data.append(correlation_message)
+        correlation_status = "UNVERIFIED"
+        correlation_note = correlation_message
+    else:
+        correlation_status = "VERIFIED"
+        correlation_note = (
+            "Quantitative correlation data was supplied with an explicit verification marker."
+        )
+
     # Deterministic guardrail: when numeric limits are not configured,
     # no model-generated target/max percentage is allowed to survive.
+    target_weight_min_pct = output.target_weight_min_pct
+    target_weight_max_pct = output.target_weight_max_pct
+    max_weight_pct = output.max_weight_pct
     if "numeric position limits are NOT CONFIGURED" in portfolio_policy:
-        output.target_weight_min_pct = None
-        output.target_weight_max_pct = None
-        output.max_weight_pct = None
+        target_weight_min_pct = None
+        target_weight_max_pct = None
+        max_weight_pct = None
         missing_item = "User-specific numeric position limit: NOT CONFIGURED"
-        if missing_item not in output.missing_data:
-            output.missing_data.append(missing_item)
+        if missing_item not in missing_data:
+            missing_data.append(missing_item)
 
-    return output
+    return output.model_copy(
+        update={
+            "target_weight_min_pct": target_weight_min_pct,
+            "target_weight_max_pct": target_weight_max_pct,
+            "max_weight_pct": max_weight_pct,
+            "correlation_status": correlation_status,
+            "correlation_note": correlation_note,
+            "concentration_risk": concentration_risk,
+            "reasons": reasons,
+            "missing_data": missing_data,
+        }
+    )
 
 
 def run_portfolio_review(portfolio_snapshot: str) -> str:
