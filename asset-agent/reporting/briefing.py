@@ -25,6 +25,7 @@ INSTRUMENT-AWARE REPORTING
 - Never calculate a wipeout/total-loss threshold from the leverage multiple.
 - An exact percentage threshold for total loss/wipeout may appear only when the source report explicitly preserves that exact threshold as independently VERIFIED by the Product Data Auditor.
 - If exact threshold verification is absent or unclear, use only a non-numeric warning about rapid or potentially complete loss.
+- WIPEOUT_THRESHOLD_STATUS is internal metadata. Use it to decide whether an exact threshold is permitted, but never print the literal marker in the CEO report.
 - UNKNOWN must be presented as an identity/structure verification problem, not silently converted into a stock analysis.
 
 PRODUCT DATA AUDIT
@@ -123,12 +124,15 @@ def run_korean_ceo_brief(
     result = Runner.run_sync(briefing_agent, "\n\n".join(context_parts))
     report = result.final_output
 
-    # Final deterministic presentation guardrail. Unless the CIO report itself
-    # explicitly carries a verified threshold marker, do not let a generated
-    # percentage + total-loss claim reach the CEO screen. This is intentionally
-    # conservative: hiding a verified threshold is safer than inventing one.
     if "LEVERAGED_ETF" in source_report and "WIPEOUT_THRESHOLD_STATUS: VERIFIED" not in source_report:
         report = sanitize_downstream_text(report, threshold_verified=False)
+
+    # Internal verification metadata must never leak into the CEO-facing report.
+    report = "\n".join(
+        line
+        for line in report.splitlines()
+        if not line.strip().startswith("WIPEOUT_THRESHOLD_STATUS:")
+    )
 
     return report
 
