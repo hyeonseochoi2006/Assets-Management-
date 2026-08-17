@@ -25,6 +25,7 @@ _GENERIC_TOTAL_LOSS_WARNING = (
     "No exact numeric total-loss threshold is verified for this report; do not infer one mechanically from the leverage multiple."
 )
 _REDACTED_THRESHOLD = "[UNVERIFIED NUMERIC TOTAL-LOSS THRESHOLD REDACTED]"
+_THRESHOLD_TOPIC = "TOTAL_LOSS_NUMERIC_THRESHOLD"
 
 
 def _percent_tokens(text: str | None) -> set[str]:
@@ -54,22 +55,39 @@ def _redact_percentages(text: str | None) -> str | None:
     return _PERCENT_RE.sub(_REDACTED_THRESHOLD, text)
 
 
-def verified_total_loss_thresholds(audit: ProductDataAuditReport) -> set[str]:
-    """Return only exact percent thresholds explicitly verified by Product Data Auditor.
+def _verified_threshold_claims(audit: ProductDataAuditReport):
+    return [
+        claim
+        for claim in audit.checked_claims
+        if _normalize_topic(claim.topic) == _THRESHOLD_TOPIC
+        and claim.status == "VERIFIED"
+        and claim.verified_value
+        and _percent_tokens(claim.verified_value)
+        and claim.sources
+    ]
 
-    A threshold is accepted only when the auditor uses the dedicated topic,
-    marks it VERIFIED, supplies a verified value containing a percentage, and
-    provides at least one source. This prevents a generic verified risk warning
-    from being mistaken for verification of a precise wipeout threshold.
-    """
+
+def verified_total_loss_thresholds(audit: ProductDataAuditReport) -> set[str]:
+    """Return only exact percent thresholds explicitly verified by Product Data Auditor."""
     verified: set[str] = set()
-    for claim in audit.checked_claims:
-        if _normalize_topic(claim.topic) != "TOTAL_LOSS_NUMERIC_THRESHOLD":
-            continue
-        if claim.status != "VERIFIED" or not claim.sources:
-            continue
+    for claim in _verified_threshold_claims(audit):
         verified.update(_percent_tokens(claim.verified_value))
     return verified
+
+
+def verified_total_loss_threshold_details(audit: ProductDataAuditReport) -> list[str]:
+    """Return full audited wording so qualifiers are preserved downstream.
+
+    The percentage alone is insufficient. For example, 'approximately 33% during
+    the trading day' must not become an exact 33.0% mechanical liquidation rule.
+    """
+    details: list[str] = []
+    for claim in _verified_threshold_claims(audit):
+        source_text = "; ".join(claim.sources)
+        details.append(
+            f"{claim.verified_value} | primary/reliable source(s): {source_text}"
+        )
+    return details
 
 
 def sanitize_product_audit_for_downstream(
@@ -79,7 +97,7 @@ def sanitize_product_audit_for_downstream(
     sanitized_claims = []
     for claim in audit.checked_claims:
         if (
-            _normalize_topic(claim.topic) == "TOTAL_LOSS_NUMERIC_THRESHOLD"
+            _normalize_topic(claim.topic) == _THRESHOLD_TOPIC
             and claim.status != "VERIFIED"
         ):
             sanitized_claims.append(
@@ -104,7 +122,7 @@ def sanitize_product_audit_for_downstream(
                 conflict.explanation,
             ]
         )
-        if _normalize_topic(conflict.topic) == "TOTAL_LOSS_NUMERIC_THRESHOLD" or _is_numeric_total_loss_claim(combined):
+        if _normalize_topic(conflict.topic) == _THRESHOLD_TOPIC or _is_numeric_total_loss_claim(combined):
             sanitized_conflicts.append(
                 conflict.model_copy(
                     update={
@@ -151,6 +169,7 @@ def sanitize_leveraged_etf_assessment(
 ) -> tuple[LeveragedETFAnalysisAssessment, str]:
     """Remove unverified numeric wipeout thresholds before downstream agents see them."""
     verified = verified_total_loss_thresholds(audit)
+    verified_details = verified_total_loss_threshold_details(audit)
 
     updates: dict[str, object] = {
         "total_loss_warning": _sanitize_text(assessment.total_loss_warning, verified),
@@ -165,8 +184,20 @@ def sanitize_leveraged_etf_assessment(
     }
 
     sanitized = assessment.model_copy(update=updates)
-    if verified:
-        marker = "WIPEOUT_THRESHOLD_STATUS: VERIFIED | " + ", ".join(sorted(verified))
+    if verified_details:
+        marker = "\n".join(
+            [
+                "WIPEOUT_THRESHOLD_STATUS: VERIFIED",
+                *[
+                    "WIPEOUT_THRESHOLD_VERIFIED_CLAIM: " + detail
+                    for detail in verified_details
+                ],
+                (
+                    "WIPEOUT_THRESHOLD_RULE: preserve the official qualifiers exactly; "
+                    "do not convert the verified warning into a mechanical liquidation formula."
+                ),
+            ]
+        )
     else:
         marker = (
             "WIPEOUT_THRESHOLD_STATUS: NOT_VERIFIED — do not calculate, infer, or state any exact "
