@@ -4,6 +4,10 @@ from agents import Agent, Runner
 from pydantic import BaseModel
 
 from policies.risk_rubric import aggregate_risk_level, enforce_minimum_review_verdict
+from research.product_claim_guardrails import (
+    report_has_verified_wipeout_threshold,
+    sanitize_downstream_text,
+)
 
 
 RiskLevel = Literal["LOW", "MODERATE", "HIGH", "CRITICAL"]
@@ -55,6 +59,7 @@ Treat Data Auditor CONFLICT/UNVERIFIED items and Bear Case thesis-breakers as ex
 
 For ETF/LEVERAGED_ETF research, the report may contain a Product Data Auditor report.
 Treat Product Data Auditor CONFLICT/UNVERIFIED items as explicit risk/data-quality inputs. Never silently use a CONFLICT or UNVERIFIED AUM, NAV, expense ratio, benchmark, leverage target, reset period, derivatives claim, or prospectus warning as verified fact.
+If WIPEOUT_THRESHOLD_STATUS is NOT_VERIFIED, do not calculate, infer, or state any exact percentage threshold for total loss/wipeout.
 
 Your job is NOT to decide whether the investor should buy.
 Your job is to determine whether the proposed investment creates acceptable or unacceptable risk.
@@ -178,6 +183,26 @@ Do not invent numeric investor limits.
 
     risk_limit_items = list(output.risk_limits)
     missing_data = list(output.missing_data)
+    stress_scenarios = list(output.stress_scenarios)
+    major_risks = list(output.major_risks)
+
+    threshold_guard_active = (
+        "WIPEOUT_THRESHOLD_STATUS:" in analysis_report
+        and not report_has_verified_wipeout_threshold(analysis_report)
+    )
+    if threshold_guard_active:
+        stress_scenarios = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in stress_scenarios
+        ]
+        major_risks = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in major_risks
+        ]
+        missing_data = [
+            sanitize_downstream_text(item, threshold_verified=False)
+            for item in missing_data
+        ]
 
     # Deterministic guardrail: policy-free percentages must never become hard limits.
     if "numeric position limits are NOT CONFIGURED" in risk_limits:
@@ -206,5 +231,7 @@ Do not invent numeric investor limits.
             "risk_verdict": verdict,
             "risk_limits": risk_limit_items,
             "missing_data": missing_data,
+            "stress_scenarios": stress_scenarios,
+            "major_risks": major_risks,
         }
     )
