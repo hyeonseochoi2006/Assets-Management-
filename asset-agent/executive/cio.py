@@ -257,6 +257,11 @@ Classify whether the CEO actually needs to be interrupted and state the escalati
     correlation_verified = '"correlation_status": "VERIFIED"' in portfolio_report
     if not correlation_verified:
         cio_report = sanitize_unverified_correlation_text(cio_report, verified=False)
+    correlation_marker = (
+        "CORRELATION_STATUS: VERIFIED"
+        if correlation_verified
+        else "CORRELATION_STATUS: UNVERIFIED"
+    )
 
     threshold_marker = next(
         (
@@ -272,7 +277,10 @@ Classify whether the CEO actually needs to be interrupted and state the escalati
     )
     if threshold_guard_active:
         cio_report = sanitize_downstream_text(cio_report, threshold_verified=False)
+
+    metadata_lines = [correlation_marker]
     if threshold_marker:
-        cio_report = threshold_marker + "\n\n" + cio_report
+        metadata_lines.append(threshold_marker)
+    cio_report = "\n".join(metadata_lines) + "\n\n" + cio_report
 
     return portfolio_snapshot, cio_report
