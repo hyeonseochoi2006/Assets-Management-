@@ -1,17 +1,35 @@
+from typing import Literal
+
 from agents import Agent, Runner
 from pydantic import BaseModel
+
+from policies.risk_rubric import aggregate_risk_level, enforce_minimum_review_verdict
+
+
+RiskLevel = Literal["LOW", "MODERATE", "HIGH", "CRITICAL"]
 
 
 class RiskAssessment(BaseModel):
     ticker: str
-    overall_risk_score: int
-    risk_level: str
-    company_risk: int
-    valuation_risk: int
-    concentration_risk: int
-    market_risk: int
-    liquidity_risk: int
-    execution_risk: int
+
+    # Legacy numeric fields remain nullable for API compatibility, but are
+    # deterministically cleared after every model run. They are not calibrated.
+    overall_risk_score: int | None = None
+    company_risk: int | None = None
+    valuation_risk: int | None = None
+    concentration_risk: int | None = None
+    market_risk: int | None = None
+    liquidity_risk: int | None = None
+    execution_risk: int | None = None
+
+    risk_level: RiskLevel
+    company_risk_level: RiskLevel
+    valuation_risk_level: RiskLevel
+    concentration_risk_level: RiskLevel
+    market_risk_level: RiskLevel
+    liquidity_risk_level: RiskLevel
+    execution_risk_level: RiskLevel
+
     stress_scenarios: list[str]
     major_risks: list[str]
     risk_limits: list[str]
@@ -34,6 +52,9 @@ Respect that route. Never treat an ETF as an operating company.
 
 For STOCK research, the report may contain a Shared Evidence Pack, Data Auditor report, and conditional Bear Case Specialist report.
 Treat Data Auditor CONFLICT/UNVERIFIED items and Bear Case thesis-breakers as explicit risk inputs. Do not erase them because the Analysis Lead is favorable.
+
+For ETF/LEVERAGED_ETF research, the report may contain a Product Data Auditor report.
+Treat Product Data Auditor CONFLICT/UNVERIFIED items as explicit risk/data-quality inputs. Never silently use a CONFLICT or UNVERIFIED AUM, NAV, expense ratio, benchmark, leverage target, reset period, derivatives claim, or prospectus warning as verified fact.
 
 Your job is NOT to decide whether the investor should buy.
 Your job is to determine whether the proposed investment creates acceptable or unacceptable risk.
@@ -60,15 +81,17 @@ LEVERAGED ETF RULES:
 - Leveraged/inverse ETF or ETP product eligibility is a separate policy field. If it is NOT CONFIGURED, report that as missing policy and do not treat the product as approved/actionable.
 - Do not infer product permission or prohibition from the margin/borrowing ban; use the explicit product-eligibility status.
 
-SCORING:
-All individual risk scores must be between 0 and 100.
-0 = very low risk
-100 = extremely high risk
-These scores are qualitative model ratings, not calibrated probabilities and not investor limits.
+QUALITATIVE RISK RUBRIC:
+For each component, output exactly one of LOW / MODERATE / HIGH / CRITICAL.
+- company_risk_level: company-specific risk for STOCK, or fund/product-structure risk for ETF products.
+- valuation_risk_level: stock valuation risk, or product pricing/NAV/expectation risk for funds.
+- concentration_risk_level: portfolio and underlying exposure concentration.
+- market_risk_level: sensitivity to market/sector/index movements.
+- liquidity_risk_level: ability to trade without unacceptable liquidity/spread risk based on verified evidence.
+- execution_risk_level: timing, event, rebalance, spread, and execution uncertainty.
 
-For ETF/LEVERAGED_ETF compatibility with the current schema:
-- company_risk represents fund/product-structure risk.
-- valuation_risk represents valuation or product pricing/expectation risk as applicable.
+Do NOT assign precise 0-100 scores. Numeric risk-score fields are legacy compatibility fields and must be null.
+The application will deterministically aggregate the component levels; do not pretend a 96 is meaningfully different from a 97.
 
 risk_level must be one of:
 LOW
@@ -86,13 +109,13 @@ RULES:
 - Never make the final buy decision.
 - Never invent portfolio information.
 - Never invent numeric investor limits, target weights, maximum position sizes, or sector caps.
-- A risk score is NOT a position-size limit.
+- A qualitative risk level is NOT a position-size limit.
 - A current portfolio weight is NOT a policy limit.
 - If the supplied policy says numeric limits are NOT CONFIGURED, risk_limits must contain only a NOT CONFIGURED message and must not contain percentages.
 - If a numeric limit is needed but not configured, list it in missing_data instead of guessing.
 - Never ignore missing information.
-- A material Data Auditor conflict must remain unresolved unless later evidence explicitly resolves it.
-- If required Bear Case work is unavailable, list that as missing analysis rather than assuming the thesis is safe.
+- A material Data Auditor or Product Data Auditor conflict must remain unresolved unless later evidence explicitly resolves it.
+- If required Bear Case work or product audit work is unavailable, list that as missing analysis rather than assuming the thesis/product is safe.
 - High business quality does not eliminate investment risk.
 - High expected returns do not justify unlimited risk.
 - Identify risks that could cause permanent capital loss.
@@ -125,20 +148,63 @@ INVESTOR RISK LIMITS:
 
 Evaluate the risk of adding or maintaining {ticker} within this portfolio.
 Respect the instrument route in the research report.
-Preserve Data Auditor conflicts and Bear Case dissent when present.
+Preserve Data Auditor, Product Data Auditor, and Bear Case dissent when present.
+Use qualitative risk levels, not precise numeric scores.
 Do not make the final buy decision.
 Do not invent numeric investor limits.
 """,
     )
     output = result.final_output
 
+    component_levels = [
+        output.company_risk_level,
+        output.valuation_risk_level,
+        output.concentration_risk_level,
+        output.market_risk_level,
+        output.liquidity_risk_level,
+        output.execution_risk_level,
+    ]
+    overall_level = aggregate_risk_level(component_levels)
+
+    policy_review_required = (
+        "LEVERAGED_ETF" in analysis_report
+        and "Leveraged/inverse ETF or ETP eligibility is NOT CONFIGURED" in risk_limits
+    )
+    verdict = enforce_minimum_review_verdict(
+        output.risk_verdict,
+        overall_level,
+        policy_review_required,
+    )
+
+    risk_limit_items = list(output.risk_limits)
+    missing_data = list(output.missing_data)
+
     # Deterministic guardrail: policy-free percentages must never become hard limits.
     if "numeric position limits are NOT CONFIGURED" in risk_limits:
-        output.risk_limits = [
+        risk_limit_items = [
             "NOT CONFIGURED — CEO policy required before any numeric position limit can be enforced."
         ]
         missing_item = "User-specific numeric position limit: NOT CONFIGURED"
-        if missing_item not in output.missing_data:
-            output.missing_data.append(missing_item)
+        if missing_item not in missing_data:
+            missing_data.append(missing_item)
 
-    return output
+    if policy_review_required:
+        missing_item = "Leveraged/inverse ETF or ETP eligibility: NOT CONFIGURED"
+        if missing_item not in missing_data:
+            missing_data.append(missing_item)
+
+    return output.model_copy(
+        update={
+            "overall_risk_score": None,
+            "company_risk": None,
+            "valuation_risk": None,
+            "concentration_risk": None,
+            "market_risk": None,
+            "liquidity_risk": None,
+            "execution_risk": None,
+            "risk_level": overall_level,
+            "risk_verdict": verdict,
+            "risk_limits": risk_limit_items,
+            "missing_data": missing_data,
+        }
+    )
