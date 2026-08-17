@@ -12,6 +12,11 @@ _LEVERAGED_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+_FUND_HINT_PATTERN = re.compile(
+    r"\b(?:DIREXION|PROSHARES|ISHARES|SPDR|VANGUARD|GLOBAL X|WISDOMTREE|ARK ETF|ETF|EXCHANGE TRADED FUND)\b",
+    re.IGNORECASE,
+)
+
 
 instrument_router_agent = Agent(
     name="Instrument Router",
@@ -105,6 +110,11 @@ def _deterministic_route(
             reasons=["Exact Toss symbol metadata classifies the instrument as an ETF."],
         )
 
+    # Some broker taxonomies can use stock-like labels for exchange-traded
+    # products. Known fund-name hints force official-source verification first.
+    if _FUND_HINT_PATTERN.search(name or ""):
+        return None
+
     if upper_type == "STOCK" or "COMMON STOCK" in upper_type or "EQUITY" in upper_type:
         return InstrumentRouteAssessment(
             ticker=ticker,
@@ -156,9 +166,11 @@ Do not make an investment recommendation.
     if broker_error:
         missing.append(broker_error)
 
+    broker_name = broker_context.get("englishName") or broker_context.get("name")
     return output.model_copy(
         update={
             "ticker": normalized,
+            "official_name": output.official_name or broker_name,
             "broker_security_type": output.broker_security_type
             or broker_context.get("securityType"),
             "missing_or_unverified": list(dict.fromkeys(missing)),
