@@ -243,11 +243,21 @@ Classify whether the CEO actually needs to be interrupted and state the escalati
     _emit_status(status_callback, "CIO", "DONE")
 
     cio_report = cio_result.final_output
+    threshold_marker = next(
+        (
+            line.strip()
+            for line in analysis_report.splitlines()
+            if line.strip().startswith("WIPEOUT_THRESHOLD_STATUS:")
+        ),
+        None,
+    )
     threshold_guard_active = (
-        "WIPEOUT_THRESHOLD_STATUS:" in analysis_report
+        threshold_marker is not None
         and not report_has_verified_wipeout_threshold(analysis_report)
     )
     if threshold_guard_active:
         cio_report = sanitize_downstream_text(cio_report, threshold_verified=False)
+    if threshold_marker:
+        cio_report = threshold_marker + "\n\n" + cio_report
 
     return portfolio_snapshot, cio_report
