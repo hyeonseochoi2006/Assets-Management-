@@ -2,8 +2,14 @@ from agents import Agent, Runner
 
 from policies.ceo_operating_policy import get_full_operating_policy
 from policies.investment_policy import RISK_POLICY
-from research.correlation_guardrails import sanitize_unverified_correlation_text
-from research.product_claim_guardrails import sanitize_downstream_text
+from research.correlation_guardrails import (
+    report_has_verified_correlation_status,
+    sanitize_unverified_correlation_text,
+)
+from research.product_claim_guardrails import (
+    report_has_verified_wipeout_threshold,
+    sanitize_downstream_text,
+)
 
 
 briefing_agent = Agent(
@@ -138,10 +144,13 @@ def run_korean_ceo_brief(
     result = Runner.run_sync(briefing_agent, "\n\n".join(context_parts))
     report = result.final_output
 
-    if "LEVERAGED_ETF" in source_report and "WIPEOUT_THRESHOLD_STATUS: VERIFIED" not in source_report:
+    if (
+        "LEVERAGED_ETF" in source_report
+        and not report_has_verified_wipeout_threshold(source_report)
+    ):
         report = sanitize_downstream_text(report, threshold_verified=False)
 
-    if "CORRELATION_STATUS: VERIFIED" not in source_report:
+    if not report_has_verified_correlation_status(source_report):
         report = sanitize_unverified_correlation_text(report, verified=False)
 
     # Internal verification metadata controls the report but must not be printed.

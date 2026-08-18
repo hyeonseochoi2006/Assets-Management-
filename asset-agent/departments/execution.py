@@ -1,5 +1,7 @@
+from typing import Literal
+
 from agents import Agent, Runner
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from research.product_claim_guardrails import (
     report_has_verified_wipeout_threshold,
@@ -8,18 +10,49 @@ from research.product_claim_guardrails import (
 
 
 class ExecutionAssessment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ticker: str
-    execution_risk_score: int
-    execution_risk_level: str
-    preferred_order_type: str
-    preferred_entry_method: str
-    suggested_tranches: int
-    max_position_pct: float | None
+    execution_risk_score: int = Field(ge=0, le=100)
+    execution_risk_level: Literal["LOW", "MODERATE", "HIGH", "CRITICAL"]
+    preferred_order_type: Literal["LIMIT", "MARKET", "NO ORDER RECOMMENDED"]
+    preferred_entry_method: Literal["SINGLE ENTRY", "STAGED ENTRY", "WAIT"]
+    suggested_tranches: int = Field(ge=0, le=20)
+    max_position_pct: float | None = Field(default=None, ge=0, le=100)
     timing_considerations: list[str]
     execution_risks: list[str]
     conditions_before_execution: list[str]
-    execution_verdict: str
+    execution_verdict: Literal[
+        "READY",
+        "READY WITH CONDITIONS",
+        "WAIT",
+        "INSUFFICIENT DATA",
+    ]
     missing_data: list[str]
+
+    @model_validator(mode="after")
+    def validate_execution_consistency(self) -> "ExecutionAssessment":
+        waiting = self.execution_verdict in {"WAIT", "INSUFFICIENT DATA"}
+        no_order = self.preferred_order_type == "NO ORDER RECOMMENDED"
+
+        if waiting or no_order:
+            if not waiting or not no_order:
+                raise ValueError(
+                    "WAIT/INSUFFICIENT DATA and NO ORDER RECOMMENDED must be used together"
+                )
+            if self.preferred_entry_method != "WAIT" or self.suggested_tranches != 0:
+                raise ValueError(
+                    "non-actionable assessments must use WAIT and zero tranches"
+                )
+            return self
+
+        if self.preferred_entry_method == "WAIT":
+            raise ValueError("an actionable assessment cannot use WAIT entry method")
+        if self.preferred_entry_method == "SINGLE ENTRY" and self.suggested_tranches != 1:
+            raise ValueError("SINGLE ENTRY requires exactly one tranche")
+        if self.preferred_entry_method == "STAGED ENTRY" and self.suggested_tranches < 2:
+            raise ValueError("STAGED ENTRY requires at least two tranches")
+        return self
 
 
 execution_agent = Agent(
@@ -99,6 +132,13 @@ preferred_entry_method must be one of:
 SINGLE ENTRY
 STAGED ENTRY
 WAIT
+
+CONSISTENCY RULES:
+- READY / READY WITH CONDITIONS requires LIMIT or MARKET and at least one tranche.
+- SINGLE ENTRY requires suggested_tranches=1.
+- STAGED ENTRY requires suggested_tranches between 2 and 20.
+- WAIT / INSUFFICIENT DATA requires preferred_order_type=NO ORDER RECOMMENDED,
+  preferred_entry_method=WAIT, and suggested_tranches=0.
 """,
     output_type=ExecutionAssessment,
 )

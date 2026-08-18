@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EvidenceFact(BaseModel):
@@ -36,8 +36,14 @@ class EvidencePack(BaseModel):
     industry_summary: str
     facts: list[EvidenceFact] = Field(default_factory=list)
     missing_or_unverified: list[str] = Field(default_factory=list)
-    source_count: int = 0
-    primary_source_count: int = 0
+    source_count: int = Field(default=0, ge=0)
+    primary_source_count: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_source_counts(self) -> "EvidencePack":
+        if self.primary_source_count > self.source_count:
+            raise ValueError("primary_source_count must not exceed source_count")
+        return self
 
 
 class AuditClaim(BaseModel):

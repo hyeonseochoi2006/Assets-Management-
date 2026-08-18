@@ -1,11 +1,36 @@
-CORRELATION_VERIFIED_MARKER = "CORRELATION_DATA_VERIFIED:"
+import re
+
+
+CORRELATION_VERIFIED_MARKER = "CORRELATION_DATA_VERIFIED: TRUE"
 
 _CORRELATION_TERMS = (
     "correlation",
     "correlated",
     "highly correlated",
+    "co-move",
+    "co-movement",
+    "move in tandem",
+    "moves in tandem",
+    "moving in tandem",
+    "move together",
+    "moves together",
+    "moving together",
+    "move in sync",
+    "moves in sync",
+    "moving in sync",
+    "in lockstep",
     "상관성",
     "상관관계",
+    "상관계수",
+    "역상관",
+    "동조화",
+    "동조",
+    "같이 움직",
+    "함께 움직",
+    "반대로 움직",
+    "같은 방향으로 움직",
+    "동일하게 움직",
+    "커플링",
 )
 
 _GENERIC_UNVERIFIED_CORRELATION = (
@@ -15,7 +40,20 @@ _GENERIC_UNVERIFIED_CORRELATION = (
 
 
 def correlation_is_verified(*texts: str) -> bool:
-    return any(CORRELATION_VERIFIED_MARKER in text for text in texts if text)
+    marker_pattern = re.compile(
+        r"(?m)^\s*CORRELATION_DATA_VERIFIED:\s*(?:TRUE|YES|VERIFIED)(?:\s*\||\s*$)",
+        re.IGNORECASE,
+    )
+    return any(marker_pattern.search(text) is not None for text in texts if text)
+
+
+def report_has_verified_correlation_status(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(?m)^\s*CORRELATION_STATUS:\s*VERIFIED(?:\s*\||\s*$)",
+            text,
+        )
+    )
 
 
 def contains_correlation_language(text: str) -> bool:

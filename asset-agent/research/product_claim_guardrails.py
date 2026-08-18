@@ -1,9 +1,24 @@
 import re
+from decimal import Decimal, InvalidOperation
 
 from research.models import LeveragedETFAnalysisAssessment, ProductDataAuditReport
 
 
-_PERCENT_RE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*%")
+_PERCENT_RE = re.compile(
+    r"(?<![\d.])(?P<value>\d+(?:[.,]\d+)?)\s*"
+    r"(?:%|％|percent(?:age)?|per\s+cent|pct\.?|퍼센트|프로)",
+    re.IGNORECASE,
+)
+_WRITTEN_PERCENT_RE = re.compile(
+    r"\b(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+    r"twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|point|"
+    r"and|[ -])+percent(?:age)?\b",
+    re.IGNORECASE,
+)
+_KOREAN_WRITTEN_PERCENT_RE = re.compile(
+    r"[영공일이삼사오육칠팔구십백천점\s]+(?:퍼센트|프로)"
+)
 _TOTAL_LOSS_TERMS = (
     "total loss",
     "complete loss",
@@ -14,8 +29,15 @@ _TOTAL_LOSS_TERMS = (
     "wipe out",
     "loss of the entire",
     "loss of all",
+    "all principal",
+    "entire principal",
     "전액 손실",
     "원금 전액",
+    "원금 전체",
+    "원금 모두",
+    "투자금 전액",
+    "투자금 전체",
+    "투자금 모두",
     "총손실",
     "완전 손실",
     "전부 손실",
@@ -31,7 +53,25 @@ _THRESHOLD_TOPIC = "TOTAL_LOSS_NUMERIC_THRESHOLD"
 def _percent_tokens(text: str | None) -> set[str]:
     if not text:
         return set()
-    return {f"{match.group(1)}%" for match in _PERCENT_RE.finditer(text)}
+    tokens: set[str] = set()
+    for match in _PERCENT_RE.finditer(text):
+        raw_value = match.group("value").replace(",", ".")
+        try:
+            normalized = format(Decimal(raw_value).normalize(), "f")
+        except InvalidOperation:
+            continue
+        tokens.add(f"{normalized}%")
+    return tokens
+
+
+def _contains_percentage_language(text: str | None) -> bool:
+    if not text:
+        return False
+    return bool(
+        _PERCENT_RE.search(text)
+        or _WRITTEN_PERCENT_RE.search(text)
+        or _KOREAN_WRITTEN_PERCENT_RE.search(text)
+    )
 
 
 def _contains_total_loss_language(text: str | None) -> bool:
@@ -42,7 +82,7 @@ def _contains_total_loss_language(text: str | None) -> bool:
 
 
 def _is_numeric_total_loss_claim(text: str | None) -> bool:
-    return bool(_percent_tokens(text)) and _contains_total_loss_language(text)
+    return _contains_percentage_language(text) and _contains_total_loss_language(text)
 
 
 def _normalize_topic(topic: str) -> str:
@@ -52,7 +92,9 @@ def _normalize_topic(topic: str) -> str:
 def _redact_percentages(text: str | None) -> str | None:
     if text is None:
         return None
-    return _PERCENT_RE.sub(_REDACTED_THRESHOLD, text)
+    redacted = _PERCENT_RE.sub(_REDACTED_THRESHOLD, text)
+    redacted = _WRITTEN_PERCENT_RE.sub(_REDACTED_THRESHOLD, redacted)
+    return _KOREAN_WRITTEN_PERCENT_RE.sub(_REDACTED_THRESHOLD, redacted)
 
 
 def _verified_threshold_claims(audit: ProductDataAuditReport):
@@ -61,9 +103,10 @@ def _verified_threshold_claims(audit: ProductDataAuditReport):
         for claim in audit.checked_claims
         if _normalize_topic(claim.topic) == _THRESHOLD_TOPIC
         and claim.status == "VERIFIED"
+        and claim.source_identity_status == "SOURCE_MATCHED"
         and claim.verified_value
         and _percent_tokens(claim.verified_value)
-        and claim.sources
+        and any(source.strip() for source in claim.sources)
     ]
 
 
@@ -218,4 +261,9 @@ def sanitize_downstream_text(text: str, threshold_verified: bool) -> str:
 
 
 def report_has_verified_wipeout_threshold(source_report: str) -> bool:
-    return "WIPEOUT_THRESHOLD_STATUS: VERIFIED" in source_report
+    return bool(
+        re.search(
+            r"(?m)^\s*WIPEOUT_THRESHOLD_STATUS:\s*VERIFIED(?:\s*\||\s*$)",
+            source_report,
+        )
+    )

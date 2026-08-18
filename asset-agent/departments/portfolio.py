@@ -1,7 +1,7 @@
 from typing import Literal
 
 from agents import Agent, Runner
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from policies.ceo_operating_policy import get_full_operating_policy
 from research.correlation_guardrails import (
@@ -12,18 +12,42 @@ from research.correlation_guardrails import (
 
 
 class PortfolioAssessment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ticker: str
-    current_weight_pct: float | None
-    target_weight_min_pct: float | None
-    target_weight_max_pct: float | None
-    max_weight_pct: float | None
-    fit_score: int
+    current_weight_pct: float | None = Field(default=None, ge=0, le=100)
+    target_weight_min_pct: float | None = Field(default=None, ge=0, le=100)
+    target_weight_max_pct: float | None = Field(default=None, ge=0, le=100)
+    max_weight_pct: float | None = Field(default=None, ge=0, le=100)
+    fit_score: int = Field(ge=0, le=100)
     concentration_risk: str
     correlation_status: Literal["VERIFIED", "UNVERIFIED"] = "UNVERIFIED"
     correlation_note: str = ""
-    recommendation: str
+    recommendation: Literal[
+        "NO POSITION CHANGE",
+        "SMALL POSITION",
+        "NORMAL POSITION",
+        "REDUCE EXPOSURE",
+        "INSUFFICIENT DATA",
+    ]
     reasons: list[str]
     missing_data: list[str]
+
+    @model_validator(mode="after")
+    def validate_weight_order(self) -> "PortfolioAssessment":
+        if (
+            self.target_weight_min_pct is not None
+            and self.target_weight_max_pct is not None
+            and self.target_weight_min_pct > self.target_weight_max_pct
+        ):
+            raise ValueError("target_weight_min_pct must not exceed target_weight_max_pct")
+        if (
+            self.target_weight_max_pct is not None
+            and self.max_weight_pct is not None
+            and self.target_weight_max_pct > self.max_weight_pct
+        ):
+            raise ValueError("target_weight_max_pct must not exceed max_weight_pct")
+        return self
 
 
 portfolio_agent = Agent(
@@ -58,7 +82,7 @@ Evaluate:
 CORRELATION EVIDENCE RULE
 - Quantitative correlation and thematic/holdings overlap are different concepts.
 - You may discuss sector, industry, benchmark, or holdings overlap when supported by supplied evidence.
-- Do NOT state that the candidate has high/low/positive/negative correlation with existing holdings unless the supplied input contains an explicit verified quantitative correlation dataset marked CORRELATION_DATA_VERIFIED.
+- Do NOT state that the candidate has high/low/positive/negative correlation with existing holdings unless the supplied input contains an explicit verified quantitative correlation dataset marked CORRELATION_DATA_VERIFIED: TRUE.
 - If no such marker exists, set correlation_status=UNVERIFIED and state that measured correlation is unavailable.
 - Do not use an assumed correlation relationship to lower the fit score or to claim diversification is improved/worsened. Base those judgments on separately verified concentration or overlap evidence instead.
 

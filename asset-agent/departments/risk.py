@@ -1,7 +1,7 @@
 from typing import Literal
 
 from agents import Agent, Runner
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from policies.risk_rubric import aggregate_risk_level, enforce_minimum_review_verdict
 from research.correlation_guardrails import (
@@ -15,20 +15,23 @@ from research.product_claim_guardrails import (
 
 
 RiskLevel = Literal["LOW", "MODERATE", "HIGH", "CRITICAL"]
+RiskVerdict = Literal["PASS", "PASS WITH LIMITS", "REVIEW REQUIRED", "REJECT"]
 
 
 class RiskAssessment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ticker: str
 
     # Legacy numeric fields remain nullable for API compatibility, but are
     # deterministically cleared after every model run. They are not calibrated.
-    overall_risk_score: int | None = None
-    company_risk: int | None = None
-    valuation_risk: int | None = None
-    concentration_risk: int | None = None
-    market_risk: int | None = None
-    liquidity_risk: int | None = None
-    execution_risk: int | None = None
+    overall_risk_score: int | None = Field(default=None, ge=0, le=100)
+    company_risk: int | None = Field(default=None, ge=0, le=100)
+    valuation_risk: int | None = Field(default=None, ge=0, le=100)
+    concentration_risk: int | None = Field(default=None, ge=0, le=100)
+    market_risk: int | None = Field(default=None, ge=0, le=100)
+    liquidity_risk: int | None = Field(default=None, ge=0, le=100)
+    execution_risk: int | None = Field(default=None, ge=0, le=100)
 
     risk_level: RiskLevel
     company_risk_level: RiskLevel
@@ -41,7 +44,7 @@ class RiskAssessment(BaseModel):
     stress_scenarios: list[str]
     major_risks: list[str]
     risk_limits: list[str]
-    risk_verdict: str
+    risk_verdict: RiskVerdict
     missing_data: list[str]
 
 
