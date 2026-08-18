@@ -1,10 +1,13 @@
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from api.auth import get_configured_api_token, require_api_token
 from api.job_store import JOB_STORE
 from api.service import ActiveJobError, start_daily_operations, start_job
 from operations.approval_store import APPROVAL_STORE, ApprovalStoreError
@@ -20,6 +23,13 @@ class ApprovalDecisionRequest(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Fail closed: never serve portfolio or approval data without a strong token.
+    get_configured_api_token()
+    yield
+
+
 app = FastAPI(
     title="Asset Management HQ API",
     description=(
@@ -27,8 +37,14 @@ app = FastAPI(
         "investment-agent company. Approval decisions are recorded but never "
         "place, modify, or cancel brokerage orders."
     ),
-    version="0.4.0",
+    version="0.5.0",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
+
+protected_api = APIRouter(dependencies=[Depends(require_api_token)])
 
 
 allowed_origins = [
@@ -42,7 +58,7 @@ if allowed_origins:
         allow_origins=allowed_origins,
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
 
@@ -56,7 +72,12 @@ def health() -> dict[str, str]:
     }
 
 
-@app.post("/api/v1/jobs", status_code=status.HTTP_202_ACCEPTED)
+@protected_api.get("/api/v1/auth/check")
+def check_authentication() -> dict[str, bool]:
+    return {"authenticated": True}
+
+
+@protected_api.post("/api/v1/jobs", status_code=status.HTTP_202_ACCEPTED)
 def create_job(request: JobRequest) -> dict[str, object]:
     command = request.command.strip()
     if not command:
@@ -83,7 +104,7 @@ def create_job(request: JobRequest) -> dict[str, object]:
     }
 
 
-@app.post("/api/v1/operations/daily", status_code=status.HTTP_202_ACCEPTED)
+@protected_api.post("/api/v1/operations/daily", status_code=status.HTTP_202_ACCEPTED)
 def create_daily_operations_job() -> dict[str, object]:
     """Manually start one SYSTEM Daily Operations cycle for validation."""
     try:
@@ -105,7 +126,7 @@ def create_daily_operations_job() -> dict[str, object]:
     }
 
 
-@app.get("/api/v1/operations/daily/latest")
+@protected_api.get("/api/v1/operations/daily/latest")
 def get_latest_daily_operations() -> dict[str, object]:
     latest = RUN_STORE.latest_run()
     if latest is None:
@@ -116,14 +137,14 @@ def get_latest_daily_operations() -> dict[str, object]:
     return latest
 
 
-@app.get("/api/v1/operations/daily/history")
+@protected_api.get("/api/v1/operations/daily/history")
 def get_daily_operations_history() -> dict[str, object]:
     return {
         "runs": RUN_STORE.recent_run_summaries(7),
     }
 
 
-@app.get("/api/v1/approvals")
+@protected_api.get("/api/v1/approvals")
 def get_approvals(queue_status: str | None = None, limit: int = 20) -> dict[str, object]:
     normalized = queue_status.upper() if queue_status else None
     return {
@@ -131,7 +152,7 @@ def get_approvals(queue_status: str | None = None, limit: int = 20) -> dict[str,
     }
 
 
-@app.post("/api/v1/approvals/{approval_id}/decision")
+@protected_api.post("/api/v1/approvals/{approval_id}/decision")
 def decide_approval(
     approval_id: str,
     request: ApprovalDecisionRequest,
@@ -153,7 +174,7 @@ def decide_approval(
         raise HTTPException(status_code=http_status, detail=message) from exc
 
 
-@app.get("/api/v1/jobs/{job_id}")
+@protected_api.get("/api/v1/jobs/{job_id}")
 def get_job(job_id: str) -> dict[str, object]:
     job = JOB_STORE.get_job(job_id)
     if job is None:
@@ -164,6 +185,9 @@ def get_job(job_id: str) -> dict[str, object]:
     return job
 
 
-@app.get("/api/v1/hq/state")
+@protected_api.get("/api/v1/hq/state")
 def get_hq_state() -> dict[str, object]:
     return JOB_STORE.latest_hq_state()
+
+
+app.include_router(protected_api)

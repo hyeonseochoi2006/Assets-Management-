@@ -4,6 +4,7 @@ import { getHealth } from './api/hqApi'
 import { ApprovalQueuePanel } from './components/ApprovalQueuePanel'
 import { CeoCommand } from './components/CeoCommand'
 import { DailyOperationsPanel } from './components/DailyOperationsPanel'
+import { LoginGate } from './components/LoginGate'
 import { OfficeFloor } from './components/OfficeFloor'
 import { ReportPanel } from './components/ReportPanel'
 import { Workflow } from './components/Workflow'
@@ -23,7 +24,7 @@ const EMPTY_AGENTS: AgentMap = {
 
 type HQView = '3d' | 'dashboard'
 
-export default function App() {
+function HQApplication() {
   const { job, hqState, submitting, error, start } = useJobStatus()
   const [selectedAgent, setSelectedAgent] = useState<AgentName>('CIO')
   const [health, setHealth] = useState<HealthResponse | null>(null)
@@ -134,5 +135,13 @@ export default function App() {
         <ReportPanel job={job} />
       </main>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <LoginGate>
+      <HQApplication />
+    </LoginGate>
   )
 }

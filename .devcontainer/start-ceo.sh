@@ -11,6 +11,15 @@ HQ_PORT="${ASSET_HQ_PORT:-5173}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+if [ -z "${ASSET_API_TOKEN:-}" ]; then
+  echo "[$(date -Iseconds)] ERROR: ASSET_API_TOKEN is required; configure it as a Codespaces Secret" >>"$START_LOG"
+  exit 1
+fi
+if [ "${#ASSET_API_TOKEN}" -lt 32 ]; then
+  echo "[$(date -Iseconds)] ERROR: ASSET_API_TOKEN must contain at least 32 characters" >>"$START_LOG"
+  exit 1
+fi
+
 {
   echo "[$(date -Iseconds)] Asset Management HQ start requested"
   echo "repo_root=$REPO_ROOT api_port=$API_PORT hq_port=$HQ_PORT"

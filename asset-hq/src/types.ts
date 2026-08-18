@@ -68,6 +68,10 @@ export interface HealthResponse {
   branch: string
 }
 
+export interface AuthCheckResponse {
+  authenticated: true
+}
+
 export interface DailyRunSummary {
   run_id: string
   started_at: string

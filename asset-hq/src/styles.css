@@ -21,6 +21,94 @@ body {
 button, input { font: inherit; }
 button { color: inherit; }
 
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(440px, 100%);
+  border: 1px solid #283149;
+  border-radius: 22px;
+  background: linear-gradient(145deg, rgba(20, 28, 50, .98), rgba(9, 13, 23, .98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .38);
+  padding: 30px;
+}
+
+.login-card h1 { font-size: clamp(26px, 6vw, 38px); }
+.login-card > p { color: #8e9ab4; line-height: 1.6; }
+.login-card small { display: block; color: #65728a; font-size: 11px; line-height: 1.5; margin-top: 14px; }
+
+.login-lock {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid #4863a5;
+  border-radius: 15px;
+  background: rgba(52, 79, 145, .24);
+  color: #b9c9f8;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  margin-bottom: 22px;
+}
+
+.login-field { display: block; margin-top: 24px; }
+.login-field span { display: block; color: #8290a9; font-size: 10px; font-weight: 800; letter-spacing: .12em; margin-bottom: 7px; }
+.login-field input {
+  width: 100%;
+  border: 1px solid #303b52;
+  border-radius: 12px;
+  background: #090d17;
+  color: #edf2ff;
+  padding: 13px 14px;
+  outline: none;
+}
+.login-field input:focus { border-color: #5b79c4; box-shadow: 0 0 0 3px rgba(91, 121, 196, .14); }
+
+.login-error {
+  border: 1px solid rgba(255, 104, 104, .4);
+  border-radius: 10px;
+  background: rgba(125, 34, 34, .17);
+  color: #ffb0b0;
+  padding: 10px 12px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.login-submit {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #5573bc;
+  border-radius: 12px;
+  background: #344f91;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  margin-top: 14px;
+}
+.login-submit:disabled { opacity: .48; cursor: not-allowed; }
+
+.session-sign-out {
+  position: fixed;
+  z-index: 1000;
+  right: 16px;
+  bottom: 16px;
+  border: 1px solid #30394d;
+  border-radius: 999px;
+  background: rgba(12, 16, 27, .94);
+  color: #9aa8bf;
+  padding: 9px 12px;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .32);
+}
+.session-sign-out:hover { border-color: #51617e; color: #d6def0; }
+
 .app-shell {
   width: min(1180px, calc(100% - 28px));
   margin: 0 auto;

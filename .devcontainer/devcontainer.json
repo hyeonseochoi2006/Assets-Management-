@@ -1,7 +1,7 @@
 {
   "name": "Asset Management HQ",
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "postCreateCommand": "python -m pip install -r asset-agent/requirements.txt && npm --prefix asset-hq install",
+  "postCreateCommand": "python -m pip install -r asset-agent/requirements-dev.txt && npm --prefix asset-hq install",
   "postStartCommand": "bash .devcontainer/start-ceo.sh",
   "postAttachCommand": "bash .devcontainer/start-ceo.sh",
   "forwardPorts": [5173, 8000],
@@ -11,7 +11,12 @@
       "onAutoForward": "openPreview"
     },
     "8000": {
-      "label": "Asset HQ API"
+      "label": "Asset HQ API (KEEP PRIVATE)"
+    }
+  },
+  "secrets": {
+    "ASSET_API_TOKEN": {
+      "description": "Required 32+ character Bearer token for private CEO access to Asset Management HQ."
     }
   }
 }

@@ -46,6 +46,39 @@ Start the CEO Desk:
 python -m streamlit run ceo_desk/app.py
 ```
 
+## FastAPI HQ
+
+The HQ API requires a server-side Bearer token containing at least 32
+characters. Do not commit this value or expose it through frontend environment
+variables.
+
+```bash
+export ASSET_API_TOKEN="your-generated-32-character-or-longer-token"
+python -m uvicorn api.app:app --host 127.0.0.1 --port 8000
+```
+
+Only the health endpoint is public:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/health
+```
+
+All portfolio, job, Daily Operations, HQ state, and CEO approval endpoints
+require the token:
+
+```bash
+curl \
+  -H "Authorization: Bearer $ASSET_API_TOKEN" \
+  http://127.0.0.1:8000/api/v1/hq/state
+```
+
+Install development dependencies and run the authentication tests:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 Examples inside the chat interface:
 
 ```text
