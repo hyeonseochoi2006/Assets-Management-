@@ -1,4 +1,9 @@
-from threading import Lock, Thread
+import os
+import socket
+from collections.abc import Callable
+from datetime import datetime, timezone
+from threading import Event, Lock, Thread
+from uuid import uuid4
 
 from ceo_desk.command_router import CEOAction, CEOCommand, route_command
 from ceo_desk.hq_state import AGENT_MISSIONS
@@ -6,18 +11,41 @@ from data.portfolio_monitor import get_live_portfolio_snapshot
 from departments.portfolio import run_portfolio_review
 from executive.cio import run_cio_pipeline
 from operations.daily_runner import run_daily_operations
+from operations.run_store import RUN_STORE
 from reporting.briefing import run_korean_ceo_brief
 
-from api.job_store import JOB_STORE
+from api.job_store import ActiveJobExistsError, JOB_STORE
 
 
 _START_LOCK = Lock()
+_WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex}"
+_HEARTBEAT_INTERVAL_SECONDS = 15
 
 
 class ActiveJobError(RuntimeError):
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
         super().__init__(f"Another job is already active: {job_id}")
+
+
+class RetryJobError(RuntimeError):
+    pass
+
+
+def recover_interrupted_work() -> list[str]:
+    """Recover jobs whose worker lease expired and link Daily runs to them."""
+    recovered_ids = JOB_STORE.recover_stale_jobs()
+    RUN_STORE.interrupt_jobs(
+        recovered_ids,
+        datetime.now(timezone.utc).isoformat(),
+    )
+    return recovered_ids
+
+
+def _heartbeat_job(job_id: str, stop: Event) -> None:
+    while not stop.wait(_HEARTBEAT_INTERVAL_SECONDS):
+        if not JOB_STORE.heartbeat(job_id, _WORKER_ID):
+            return
 
 
 def _task_for(agent: str, subject: str) -> str:
@@ -45,7 +73,14 @@ def _unknown_text() -> str:
 
 
 def _run_job(job_id: str, command: CEOCommand) -> None:
-    JOB_STORE.mark_running(job_id)
+    heartbeat_stop = Event()
+    heartbeat_thread = Thread(
+        target=_heartbeat_job,
+        args=(job_id, heartbeat_stop),
+        daemon=True,
+        name=f"asset-heartbeat-{job_id}",
+    )
+    heartbeat_thread.start()
 
     try:
         if command.action == CEOAction.HELP:
@@ -136,16 +171,26 @@ def _run_job(job_id: str, command: CEOCommand) -> None:
 
     except Exception as exc:
         JOB_STORE.fail_job(job_id, f"{type(exc).__name__}: {exc}")
+    finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=1)
 
 
 def _run_daily_system_job(job_id: str) -> None:
-    JOB_STORE.mark_running(job_id)
+    heartbeat_stop = Event()
+    heartbeat_thread = Thread(
+        target=_heartbeat_job,
+        args=(job_id, heartbeat_stop),
+        daemon=True,
+        name=f"asset-heartbeat-{job_id}",
+    )
+    heartbeat_thread.start()
 
     try:
         def status_callback(agent: str, status: str, task: str | None) -> None:
             JOB_STORE.update_agent(job_id, agent, status, task)
 
-        result = run_daily_operations(status_callback=status_callback)
+        result = run_daily_operations(status_callback=status_callback, job_id=job_id)
         briefing = result.get("briefing")
 
         if isinstance(briefing, str) and briefing.strip():
@@ -168,52 +213,98 @@ def _run_daily_system_job(job_id: str) -> None:
 
     except Exception as exc:
         JOB_STORE.fail_job(job_id, f"{type(exc).__name__}: {exc}")
+    finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=1)
 
 
-def start_job(command_text: str) -> dict[str, object]:
+def _start_thread(
+    job: dict[str, object],
+    target: Callable[..., None],
+    args: tuple[object, ...],
+    name: str,
+) -> None:
+    job_id = str(job["job_id"])
+    JOB_STORE.mark_running(job_id, _WORKER_ID)
+    thread = Thread(
+        target=target,
+        args=args,
+        daemon=True,
+        name=name,
+    )
+    try:
+        thread.start()
+    except Exception as exc:
+        JOB_STORE.fail_job(job_id, f"ThreadStartError: {exc}")
+        raise
+
+
+def start_job(
+    command_text: str,
+    retry_of: str | None = None,
+) -> dict[str, object]:
     command = route_command(command_text)
 
     with _START_LOCK:
+        recover_interrupted_work()
         active_job_id = JOB_STORE.active_job_id()
         if active_job_id is not None:
             raise ActiveJobError(active_job_id)
 
-        job = JOB_STORE.create_job(
-            command=command_text,
-            action=command.action.value,
-            ticker=command.ticker,
-            source="CEO",
+        try:
+            job = JOB_STORE.create_job(
+                command=command_text,
+                action=command.action.value,
+                ticker=command.ticker,
+                source="CEO",
+                retry_of=retry_of,
+            )
+        except ActiveJobExistsError as exc:
+            raise ActiveJobError(exc.job_id) from exc
+        _start_thread(
+            job,
+            _run_job,
+            (str(job["job_id"]), command),
+            f"asset-job-{job['job_id']}",
         )
-        thread = Thread(
-            target=_run_job,
-            args=(str(job["job_id"]), command),
-            daemon=True,
-            name=f"asset-job-{job['job_id']}",
-        )
-        thread.start()
 
-    return job
+    return JOB_STORE.get_job(str(job["job_id"])) or job
 
 
-def start_daily_operations() -> dict[str, object]:
+def start_daily_operations(retry_of: str | None = None) -> dict[str, object]:
     """Start one manually-triggered SYSTEM Daily Operations cycle."""
     with _START_LOCK:
+        recover_interrupted_work()
         active_job_id = JOB_STORE.active_job_id()
         if active_job_id is not None:
             raise ActiveJobError(active_job_id)
 
-        job = JOB_STORE.create_job(
-            command="AUTO DAILY OPERATIONS",
-            action="DAILY_OPERATIONS",
-            ticker=None,
-            source="SYSTEM",
+        try:
+            job = JOB_STORE.create_job(
+                command="AUTO DAILY OPERATIONS",
+                action="DAILY_OPERATIONS",
+                ticker=None,
+                source="SYSTEM",
+                retry_of=retry_of,
+            )
+        except ActiveJobExistsError as exc:
+            raise ActiveJobError(exc.job_id) from exc
+        _start_thread(
+            job,
+            _run_daily_system_job,
+            (str(job["job_id"]),),
+            f"asset-daily-{job['job_id']}",
         )
-        thread = Thread(
-            target=_run_daily_system_job,
-            args=(str(job["job_id"]),),
-            daemon=True,
-            name=f"asset-daily-{job['job_id']}",
-        )
-        thread.start()
 
-    return job
+    return JOB_STORE.get_job(str(job["job_id"])) or job
+
+
+def retry_job(job_id: str) -> dict[str, object]:
+    original = JOB_STORE.get_job(job_id)
+    if original is None:
+        raise RetryJobError("job not found")
+    if original["status"] not in {"FAILED", "INTERRUPTED"}:
+        raise RetryJobError("only FAILED or INTERRUPTED jobs can be retried")
+    if original["action"] == "DAILY_OPERATIONS":
+        return start_daily_operations(retry_of=job_id)
+    return start_job(str(original["command"]), retry_of=job_id)

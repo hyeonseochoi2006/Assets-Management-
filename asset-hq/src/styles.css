@@ -334,6 +334,15 @@ dd { margin: 0; color: #aeb9cb; font-size: 11px; line-height: 1.5; }
 }
 .final-authority { border-top: 1px solid #242c3c; padding-top: 12px; margin: 14px 0 0 !important; }
 .error-panel { border-color: rgba(255,100,100,.4); }
+.error-panel > button {
+  margin-top: 14px;
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 140, 140, .48);
+  border-radius: 8px;
+  background: rgba(115, 35, 35, .24);
+  cursor: pointer;
+}
+.error-panel > button:disabled { opacity: .48; cursor: not-allowed; }
 
 @media (max-width: 760px) {
   .app-shell { width: min(100% - 18px, 1180px); padding-top: 18px; }

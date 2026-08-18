@@ -7,7 +7,7 @@ export type AgentName =
   | 'Briefing'
 
 export type AgentStatus = 'IDLE' | 'WORKING' | 'DONE' | 'ERROR'
-export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED'
+export type JobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'INTERRUPTED'
 export type DailyEscalation =
   | 'NONE'
   | 'RISK'
@@ -45,6 +45,7 @@ export interface HQJob {
   result_type: string | null
   result: string | null
   error: string | null
+  retry_of: string | null
 }
 
 export interface CreateJobResponse extends HQJob {

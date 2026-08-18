@@ -105,6 +105,14 @@ export async function getJob(jobId: string): Promise<HQJob> {
   return readJson<HQJob>(response)
 }
 
+export async function retryJob(jobId: string): Promise<CreateJobResponse> {
+  const response = await authorizedFetch(
+    `/api/v1/jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: 'POST' },
+  )
+  return readJson<CreateJobResponse>(response)
+}
+
 export async function getHQState(): Promise<HQState> {
   const response = await authorizedFetch('/api/v1/hq/state', { cache: 'no-store' })
   return readJson<HQState>(response)

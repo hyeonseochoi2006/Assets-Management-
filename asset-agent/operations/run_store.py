@@ -33,6 +33,7 @@ class DailyRunStore:
                 """
                 CREATE TABLE IF NOT EXISTS daily_runs (
                     run_id TEXT PRIMARY KEY,
+                    job_id TEXT,
                     started_at TEXT NOT NULL,
                     completed_at TEXT,
                     status TEXT NOT NULL,
@@ -55,6 +56,7 @@ class DailyRunStore:
 
                 CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_captured_at
                 ON portfolio_snapshots(captured_at DESC);
+
                 """
             )
 
@@ -66,18 +68,44 @@ class DailyRunStore:
                 connection.execute(
                     "ALTER TABLE daily_runs ADD COLUMN opportunities_json TEXT"
                 )
+            if "job_id" not in columns:
+                connection.execute("ALTER TABLE daily_runs ADD COLUMN job_id TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_daily_runs_job_id "
+                "ON daily_runs(job_id)"
+            )
 
-    def start_run(self, started_at: str) -> str:
+    def start_run(self, started_at: str, job_id: str | None = None) -> str:
         run_id = uuid4().hex
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO daily_runs(run_id, started_at, status)
-                VALUES (?, ?, 'RUNNING')
+                INSERT INTO daily_runs(run_id, job_id, started_at, status)
+                VALUES (?, ?, ?, 'RUNNING')
                 """,
-                (run_id, started_at),
+                (run_id, job_id, started_at),
             )
         return run_id
+
+    def interrupt_jobs(
+        self,
+        job_ids: list[str],
+        completed_at: str,
+    ) -> None:
+        """Mark Daily Operations runs belonging to interrupted API jobs."""
+        if not job_ids:
+            return
+        placeholders = ",".join("?" for _ in job_ids)
+        error = "Server stopped before this Daily Operations run completed."
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                f"""
+                UPDATE daily_runs
+                SET completed_at = ?, status = 'INTERRUPTED', error = ?
+                WHERE status = 'RUNNING' AND job_id IN ({placeholders})
+                """,
+                (completed_at, error, *job_ids),
+            )
 
     def latest_snapshot(self) -> PortfolioSnapshot | None:
         with self._lock, self._connect() as connection:

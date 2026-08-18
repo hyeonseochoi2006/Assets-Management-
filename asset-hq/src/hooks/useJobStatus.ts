@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { createJob, getHQState, getJob } from '../api/hqApi'
+import { createJob, getHQState, getJob, retryJob } from '../api/hqApi'
 import type { HQJob, HQState } from '../types'
 
 export function useJobStatus() {
@@ -86,12 +86,40 @@ export function useJobStatus() {
     }
   }, [])
 
+  const retry = useCallback(async () => {
+    if (!job || (job.status !== 'FAILED' && job.status !== 'INTERRUPTED')) return
+
+    setSubmitting(true)
+    setError(null)
+    try {
+      const created = await retryJob(job.job_id)
+      setJob(created)
+      setHqState((previous) =>
+        previous
+          ? {
+              ...previous,
+              latest_job_id: created.job_id,
+              job_status: created.status,
+              command: created.command,
+              ticker: created.ticker,
+              agents: created.agents,
+            }
+          : previous,
+      )
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : String(exc))
+    } finally {
+      setSubmitting(false)
+    }
+  }, [job])
+
   return {
     job,
     hqState,
     submitting,
     error,
     start,
+    retry,
     refreshHQ,
   }
 }

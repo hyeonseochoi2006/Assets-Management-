@@ -9,7 +9,14 @@ from pydantic import BaseModel, Field
 
 from api.auth import get_configured_api_token, require_api_token
 from api.job_store import JOB_STORE
-from api.service import ActiveJobError, start_daily_operations, start_job
+from api.service import (
+    ActiveJobError,
+    RetryJobError,
+    recover_interrupted_work,
+    retry_job,
+    start_daily_operations,
+    start_job,
+)
 from operations.approval_store import APPROVAL_STORE, ApprovalStoreError
 from operations.run_store import RUN_STORE
 
@@ -27,6 +34,7 @@ class ApprovalDecisionRequest(BaseModel):
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Fail closed: never serve portfolio or approval data without a strong token.
     get_configured_api_token()
+    recover_interrupted_work()
     yield
 
 
@@ -37,7 +45,7 @@ app = FastAPI(
         "investment-agent company. Approval decisions are recorded but never "
         "place, modify, or cancel brokerage orders."
     ),
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -176,6 +184,7 @@ def decide_approval(
 
 @protected_api.get("/api/v1/jobs/{job_id}")
 def get_job(job_id: str) -> dict[str, object]:
+    recover_interrupted_work()
     job = JOB_STORE.get_job(job_id)
     if job is None:
         raise HTTPException(
@@ -185,8 +194,37 @@ def get_job(job_id: str) -> dict[str, object]:
     return job
 
 
+@protected_api.post("/api/v1/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+def retry_interrupted_job(job_id: str) -> dict[str, object]:
+    """Create a new job linked to a failed one; never place a brokerage order."""
+    try:
+        job = retry_job(job_id)
+    except ActiveJobError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Another job is already running.",
+                "active_job_id": exc.job_id,
+            },
+        ) from exc
+    except RetryJobError as exc:
+        http_status = (
+            status.HTTP_404_NOT_FOUND
+            if "not found" in str(exc).lower()
+            else status.HTTP_409_CONFLICT
+        )
+        raise HTTPException(status_code=http_status, detail=str(exc)) from exc
+
+    return {
+        **job,
+        "poll_path": f"/api/v1/jobs/{job['job_id']}",
+        "hq_state_path": "/api/v1/hq/state",
+    }
+
+
 @protected_api.get("/api/v1/hq/state")
 def get_hq_state() -> dict[str, object]:
+    recover_interrupted_work()
     return JOB_STORE.latest_hq_state()
 
 

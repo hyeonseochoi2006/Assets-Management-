@@ -2,9 +2,11 @@ import type { HQJob } from '../types'
 
 interface ReportPanelProps {
   job: HQJob | null
+  retrying: boolean
+  onRetry: () => Promise<void> | void
 }
 
-export function ReportPanel({ job }: ReportPanelProps) {
+export function ReportPanel({ job, retrying, onRetry }: ReportPanelProps) {
   if (!job) {
     return (
       <section className="report-panel empty-panel">
@@ -15,12 +17,17 @@ export function ReportPanel({ job }: ReportPanelProps) {
     )
   }
 
-  if (job.status === 'FAILED') {
+  if (job.status === 'FAILED' || job.status === 'INTERRUPTED') {
+    const interrupted = job.status === 'INTERRUPTED'
     return (
       <section className="report-panel error-panel">
-        <div className="eyebrow">CEO REPORT · FAILED</div>
-        <h2>업무가 중단되었습니다.</h2>
+        <div className="eyebrow">CEO REPORT · {job.status}</div>
+        <h2>{interrupted ? '서버 재시작으로 업무가 중단되었습니다.' : '업무 처리 중 오류가 발생했습니다.'}</h2>
         <pre>{job.error ?? 'Unknown error'}</pre>
+        <p>기존 기록은 보존됩니다. 재실행하면 연결된 새 작업이 생성됩니다.</p>
+        <button type="button" onClick={() => void onRetry()} disabled={retrying}>
+          {retrying ? '재실행 준비 중' : '안전하게 다시 실행'}
+        </button>
       </section>
     )
   }

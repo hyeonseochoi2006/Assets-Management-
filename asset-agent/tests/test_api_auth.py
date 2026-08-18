@@ -30,6 +30,7 @@ PROTECTED_REQUESTS = [
         {"decision": "ACKNOWLEDGED"},
     ),
     ("GET", "/api/v1/jobs/example", None),
+    ("POST", "/api/v1/jobs/example/retry", None),
     ("GET", "/api/v1/hq/state", None),
 ]
 
@@ -122,6 +123,11 @@ def test_protected_routes_accept_valid_token(
         lambda _: {"job_id": "job-1", "status": "COMPLETED"},
     )
     monkeypatch.setattr(
+        app_module,
+        "retry_job",
+        lambda _: {"job_id": "retry-1", "status": "QUEUED"},
+    )
+    monkeypatch.setattr(
         app_module.JOB_STORE,
         "latest_hq_state",
         lambda: {"latest_job_id": None, "job_status": "IDLE"},
@@ -140,6 +146,7 @@ def test_protected_routes_accept_valid_token(
             200,
         ),
         ("GET", "/api/v1/jobs/job-1", None, 200),
+        ("POST", "/api/v1/jobs/job-1/retry", None, 202),
         ("GET", "/api/v1/hq/state", None, 200),
     ]
 

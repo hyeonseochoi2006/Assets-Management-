@@ -25,7 +25,7 @@ const EMPTY_AGENTS: AgentMap = {
 type HQView = '3d' | 'dashboard'
 
 function HQApplication() {
-  const { job, hqState, submitting, error, start } = useJobStatus()
+  const { job, hqState, submitting, error, start, retry } = useJobStatus()
   const [selectedAgent, setSelectedAgent] = useState<AgentName>('CIO')
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [healthError, setHealthError] = useState(false)
@@ -132,7 +132,7 @@ function HQApplication() {
         </section>
 
         <CeoCommand busy={busy} submitting={submitting} onSubmit={start} />
-        <ReportPanel job={job} />
+        <ReportPanel job={job} retrying={submitting} onRetry={retry} />
       </main>
     </div>
   )

@@ -72,6 +72,19 @@ curl \
   http://127.0.0.1:8000/api/v1/hq/state
 ```
 
+HQ jobs and completed reports are stored in `runtime/operations.db`, so they
+remain available after an API restart. A running job sends a lease heartbeat.
+If the server stops and the lease expires, the job and its linked Daily
+Operations run become `INTERRUPTED` instead of remaining falsely `RUNNING`.
+The HQ then offers a deliberate retry that creates a new linked job; it never
+resumes silently, duplicates an approval intentionally, or places a trade.
+
+Runtime storage can be moved outside the repository when deploying:
+
+```bash
+export ASSET_RUNTIME_DIR="/durable/private/path"
+```
+
 Install development dependencies and run the authentication tests:
 
 ```bash

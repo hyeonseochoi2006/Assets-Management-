@@ -31,10 +31,11 @@ def _emit(
 
 def run_daily_operations(
     status_callback: DailyStatusCallback | None = None,
+    job_id: str | None = None,
 ) -> dict[str, object]:
     """Run one read-only Daily Operations cycle and persist the result."""
     started_at = _now_iso()
-    run_id = RUN_STORE.start_run(started_at)
+    run_id = RUN_STORE.start_run(started_at, job_id=job_id)
 
     try:
         previous_snapshot = RUN_STORE.latest_snapshot()
