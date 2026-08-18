@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { getDailyHistory } from '../api/hqApi'
-import type { DailyRunSummary } from '../types'
+import { getDailyHistory, getDailySchedule } from '../api/hqApi'
+import type { DailyRunSummary, DailyScheduleResponse } from '../types'
 
 function formatTime(value: string | null): string {
   if (!value) return '아직 없음'
@@ -16,7 +16,7 @@ function formatTime(value: string | null): string {
 }
 
 function statusLabel(run: DailyRunSummary): string {
-  if (run.status === 'FAILED') return '확인 필요'
+  if (run.status === 'FAILED' || run.status === 'INTERRUPTED') return '확인 필요'
   if (run.status === 'RUNNING' || run.status === 'QUEUED') return '업무 중'
   if (run.ceo_action_required) return 'CEO 확인 필요'
   return '정상 완료'
@@ -41,13 +41,18 @@ function escalationLabel(run: DailyRunSummary): string {
 
 export function DailyOperationsPanel() {
   const [runs, setRuns] = useState<DailyRunSummary[]>([])
+  const [schedule, setSchedule] = useState<DailyScheduleResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const response = await getDailyHistory()
-      setRuns(response.runs)
+      const [historyResponse, scheduleResponse] = await Promise.all([
+        getDailyHistory(),
+        getDailySchedule(),
+      ])
+      setRuns(historyResponse.runs)
+      setSchedule(scheduleResponse)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Daily Operations 기록을 불러오지 못했습니다.')
@@ -78,6 +83,33 @@ export function DailyOperationsPanel() {
       </div>
 
       {error && <div className="daily-error">{error}</div>}
+
+      {schedule && (
+        <div className="daily-schedule-strip">
+          <div>
+            <span>자동 실행</span>
+            <strong className={schedule.enabled ? 'schedule-on' : 'schedule-off'}>
+              {schedule.enabled ? '켜짐' : '꺼짐'}
+            </strong>
+          </div>
+          <div>
+            <span>시간표</span>
+            <strong>
+              {schedule.daily_time && schedule.timezone
+                ? `${schedule.daily_time} · ${schedule.timezone}`
+                : '서버 설정 필요'}
+            </strong>
+          </div>
+          <div>
+            <span>다음 예정</span>
+            <strong>{formatTime(schedule.next_run_at)}</strong>
+          </div>
+          <div>
+            <span>최근 자동 기록</span>
+            <strong>{schedule.recent_events[0]?.status ?? '아직 없음'}</strong>
+          </div>
+        </div>
+      )}
 
       {!latest && !loading ? (
         <div className="daily-empty">아직 Daily Operations 실행 기록이 없습니다.</div>

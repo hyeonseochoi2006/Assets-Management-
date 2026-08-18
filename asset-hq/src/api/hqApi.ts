@@ -4,6 +4,7 @@ import type {
   ApprovalQueueResponse,
   CreateJobResponse,
   DailyHistoryResponse,
+  DailyScheduleResponse,
   HealthResponse,
   HQJob,
   HQState,
@@ -123,6 +124,13 @@ export async function getDailyHistory(): Promise<DailyHistoryResponse> {
     cache: 'no-store',
   })
   return readJson<DailyHistoryResponse>(response)
+}
+
+export async function getDailySchedule(): Promise<DailyScheduleResponse> {
+  const response = await authorizedFetch('/api/v1/operations/daily/schedule', {
+    cache: 'no-store',
+  })
+  return readJson<DailyScheduleResponse>(response)
 }
 
 export async function getApprovalQueue(): Promise<ApprovalQueueResponse> {

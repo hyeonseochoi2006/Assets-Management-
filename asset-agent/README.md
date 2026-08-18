@@ -85,6 +85,29 @@ Runtime storage can be moved outside the repository when deploying:
 export ASSET_RUNTIME_DIR="/durable/private/path"
 ```
 
+### Automatic Daily Operations schedule
+
+The scheduler is disabled by default to prevent unexpected API usage. Enable
+it only after selecting an explicit local time and IANA timezone:
+
+```bash
+export ASSET_DAILY_SCHEDULE_ENABLED="true"
+export ASSET_DAILY_TIME="08:00"
+export ASSET_TIMEZONE="America/Vancouver"
+export ASSET_DAILY_MISFIRE_GRACE_MINUTES="120"
+```
+
+Exactly one automatic Daily Operations job can be created per local calendar
+date. If the server returns within the grace window, it performs one catch-up
+run. If it returns later, that date is recorded as `SKIPPED` and no analysis
+cost is incurred. CEO commands already in progress take priority; the
+scheduler retries until the grace window closes. Schedule state is available
+through the authenticated `/api/v1/operations/daily/schedule` endpoint.
+
+The scheduler runs only while the API server is running. Codespaces can sleep,
+so production-grade daily execution requires an always-on server and durable
+`ASSET_RUNTIME_DIR`. The scheduler never places, modifies, or cancels trades.
+
 Install development dependencies and run the authentication tests:
 
 ```bash

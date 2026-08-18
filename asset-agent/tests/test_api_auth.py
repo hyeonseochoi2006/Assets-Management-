@@ -23,6 +23,7 @@ PROTECTED_REQUESTS = [
     ("POST", "/api/v1/operations/daily", None),
     ("GET", "/api/v1/operations/daily/latest", None),
     ("GET", "/api/v1/operations/daily/history", None),
+    ("GET", "/api/v1/operations/daily/schedule", None),
     ("GET", "/api/v1/approvals?limit=1", None),
     (
         "POST",
@@ -111,6 +112,11 @@ def test_protected_routes_accept_valid_token(
         lambda: {"run_id": "run-1", "status": "COMPLETED"},
     )
     monkeypatch.setattr(app_module.RUN_STORE, "recent_run_summaries", lambda _: [])
+    monkeypatch.setattr(
+        app_module.DAILY_SCHEDULER,
+        "snapshot",
+        lambda: {"enabled": False, "recent_events": []},
+    )
     monkeypatch.setattr(app_module.APPROVAL_STORE, "list", lambda **_: [])
     monkeypatch.setattr(
         app_module.APPROVAL_STORE,
@@ -138,6 +144,7 @@ def test_protected_routes_accept_valid_token(
         ("POST", "/api/v1/operations/daily", None, 202),
         ("GET", "/api/v1/operations/daily/latest", None, 200),
         ("GET", "/api/v1/operations/daily/history", None, 200),
+        ("GET", "/api/v1/operations/daily/schedule", None, 200),
         ("GET", "/api/v1/approvals?limit=1", None, 200),
         (
             "POST",
@@ -166,5 +173,18 @@ def test_api_startup_fails_closed_for_invalid_token(
         monkeypatch.setenv("ASSET_API_TOKEN", token)
 
     with pytest.raises(RuntimeError, match="ASSET_API_TOKEN"):
+        with TestClient(app_module.app):
+            pass
+
+
+def test_api_startup_fails_closed_for_incomplete_enabled_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ASSET_API_TOKEN", VALID_TOKEN)
+    monkeypatch.setenv("ASSET_DAILY_SCHEDULE_ENABLED", "true")
+    monkeypatch.delenv("ASSET_DAILY_TIME", raising=False)
+    monkeypatch.setenv("ASSET_TIMEZONE", "UTC")
+
+    with pytest.raises(RuntimeError, match="ASSET_DAILY_TIME"):
         with TestClient(app_module.app):
             pass

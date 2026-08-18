@@ -32,6 +32,13 @@ class ActiveJobExistsError(RuntimeError):
         super().__init__(f"Another job is already active: {job_id}")
 
 
+class DuplicateScheduledJobError(RuntimeError):
+    def __init__(self, schedule_key: str, job_id: str) -> None:
+        self.schedule_key = schedule_key
+        self.job_id = job_id
+        super().__init__(f"Scheduled job already exists: {schedule_key} -> {job_id}")
+
+
 class JobStore:
     """SQLite-backed store for frontend-visible Agent jobs.
 
@@ -75,15 +82,34 @@ class JobStore:
                     heartbeat_at TEXT,
                     lease_expires_at TEXT,
                     retry_of TEXT,
+                    schedule_key TEXT,
                     FOREIGN KEY(retry_of) REFERENCES agent_jobs(job_id)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_agent_jobs_created
                 ON agent_jobs(created_at DESC);
 
+                """
+            )
+            columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(agent_jobs)"
+                ).fetchall()
+            }
+            if "schedule_key" not in columns:
+                connection.execute(
+                    "ALTER TABLE agent_jobs ADD COLUMN schedule_key TEXT"
+                )
+            connection.executescript(
+                """
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_jobs_single_active
                 ON agent_jobs((1))
                 WHERE status IN ('QUEUED', 'RUNNING');
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_jobs_schedule_key
+                ON agent_jobs(schedule_key)
+                WHERE schedule_key IS NOT NULL;
                 """
             )
 
@@ -108,6 +134,7 @@ class JobStore:
         ticker: str | None,
         source: str = "CEO",
         retry_of: str | None = None,
+        schedule_key: str | None = None,
     ) -> dict[str, object]:
         if source not in JOB_SOURCES:
             raise ValueError(f"Unsupported job source: {source}")
@@ -122,9 +149,9 @@ class JobStore:
                     """
                     INSERT INTO agent_jobs(
                         job_id, source, command, action, ticker, status,
-                        created_at, agents_json, retry_of
+                        created_at, agents_json, retry_of, schedule_key
                     )
-                    VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, 'QUEUED', ?, ?, ?, ?)
                     """,
                     (
                         job_id,
@@ -135,9 +162,20 @@ class JobStore:
                         created_at,
                         agents_json,
                         retry_of,
+                        schedule_key,
                     ),
                 )
             except sqlite3.IntegrityError as exc:
+                if schedule_key is not None:
+                    scheduled = connection.execute(
+                        "SELECT job_id FROM agent_jobs WHERE schedule_key = ?",
+                        (schedule_key,),
+                    ).fetchone()
+                    if scheduled is not None:
+                        raise DuplicateScheduledJobError(
+                            schedule_key,
+                            str(scheduled["job_id"]),
+                        ) from exc
                 active = connection.execute(
                     """
                     SELECT job_id FROM agent_jobs
@@ -156,6 +194,17 @@ class JobStore:
             row = connection.execute(
                 "SELECT * FROM agent_jobs WHERE job_id = ?",
                 (job_id,),
+            ).fetchone()
+        return self._row_to_job(row) if row is not None else None
+
+    def get_job_by_schedule_key(
+        self,
+        schedule_key: str,
+    ) -> dict[str, object] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM agent_jobs WHERE schedule_key = ?",
+                (schedule_key,),
             ).fetchone()
         return self._row_to_job(row) if row is not None else None
 

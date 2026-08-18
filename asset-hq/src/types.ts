@@ -95,6 +95,28 @@ export interface DailyHistoryResponse {
   runs: DailyRunSummary[]
 }
 
+export type DailyScheduleEventStatus = JobStatus | 'SKIPPED'
+
+export interface DailyScheduleEvent {
+  schedule_key: string
+  scheduled_for: string
+  timezone: string
+  status: DailyScheduleEventStatus
+  job_id: string | null
+  reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyScheduleResponse {
+  enabled: boolean
+  daily_time: string | null
+  timezone: string | null
+  misfire_grace_minutes: number
+  next_run_at: string | null
+  recent_events: DailyScheduleEvent[]
+}
+
 export interface ApprovalItem {
   approval_id: string
   run_id: string

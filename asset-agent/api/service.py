@@ -12,6 +12,7 @@ from departments.portfolio import run_portfolio_review
 from executive.cio import run_cio_pipeline
 from operations.daily_runner import run_daily_operations
 from operations.run_store import RUN_STORE
+from operations.schedule_store import SCHEDULE_STORE
 from reporting.briefing import run_korean_ceo_brief
 
 from api.job_store import ActiveJobExistsError, JOB_STORE
@@ -38,6 +39,10 @@ def recover_interrupted_work() -> list[str]:
     RUN_STORE.interrupt_jobs(
         recovered_ids,
         datetime.now(timezone.utc).isoformat(),
+    )
+    SCHEDULE_STORE.interrupt_jobs(
+        recovered_ids,
+        "Server stopped before the scheduled analysis completed.",
     )
     return recovered_ids
 
@@ -210,9 +215,12 @@ def _run_daily_system_job(job_id: str) -> None:
             )
 
         JOB_STORE.complete_job(job_id, output, "markdown")
+        SCHEDULE_STORE.finish_job(job_id, "COMPLETED")
 
     except Exception as exc:
-        JOB_STORE.fail_job(job_id, f"{type(exc).__name__}: {exc}")
+        error = f"{type(exc).__name__}: {exc}"
+        JOB_STORE.fail_job(job_id, error)
+        SCHEDULE_STORE.finish_job(job_id, "FAILED", error)
     finally:
         heartbeat_stop.set()
         heartbeat_thread.join(timeout=1)
@@ -235,7 +243,9 @@ def _start_thread(
     try:
         thread.start()
     except Exception as exc:
-        JOB_STORE.fail_job(job_id, f"ThreadStartError: {exc}")
+        error = f"ThreadStartError: {exc}"
+        JOB_STORE.fail_job(job_id, error)
+        SCHEDULE_STORE.finish_job(job_id, "FAILED", error)
         raise
 
 
@@ -271,8 +281,19 @@ def start_job(
     return JOB_STORE.get_job(str(job["job_id"])) or job
 
 
-def start_daily_operations(retry_of: str | None = None) -> dict[str, object]:
+def start_daily_operations(
+    retry_of: str | None = None,
+    schedule_key: str | None = None,
+    scheduled_for: str | None = None,
+    schedule_timezone: str | None = None,
+) -> dict[str, object]:
     """Start one manually-triggered SYSTEM Daily Operations cycle."""
+    schedule_values = (schedule_key, scheduled_for, schedule_timezone)
+    if any(value is not None for value in schedule_values) and not all(
+        value is not None for value in schedule_values
+    ):
+        raise ValueError("Scheduled Daily Operations requires complete context")
+
     with _START_LOCK:
         recover_interrupted_work()
         active_job_id = JOB_STORE.active_job_id()
@@ -286,9 +307,18 @@ def start_daily_operations(retry_of: str | None = None) -> dict[str, object]:
                 ticker=None,
                 source="SYSTEM",
                 retry_of=retry_of,
+                schedule_key=schedule_key,
             )
         except ActiveJobExistsError as exc:
             raise ActiveJobError(exc.job_id) from exc
+        if schedule_key and scheduled_for and schedule_timezone:
+            SCHEDULE_STORE.record_job(
+                schedule_key=schedule_key,
+                scheduled_for=scheduled_for,
+                timezone_name=schedule_timezone,
+                job_id=str(job["job_id"]),
+                status="QUEUED",
+            )
         _start_thread(
             job,
             _run_daily_system_job,
@@ -296,7 +326,16 @@ def start_daily_operations(retry_of: str | None = None) -> dict[str, object]:
             f"asset-daily-{job['job_id']}",
         )
 
-    return JOB_STORE.get_job(str(job["job_id"])) or job
+    latest_job = JOB_STORE.get_job(str(job["job_id"])) or job
+    if schedule_key and scheduled_for and schedule_timezone:
+        SCHEDULE_STORE.record_job(
+            schedule_key=schedule_key,
+            scheduled_for=scheduled_for,
+            timezone_name=schedule_timezone,
+            job_id=str(job["job_id"]),
+            status=str(latest_job["status"]),
+        )
+    return latest_job
 
 
 def retry_job(job_id: str) -> dict[str, object]:

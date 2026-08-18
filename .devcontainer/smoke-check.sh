@@ -60,6 +60,11 @@ check_status \
   "http://127.0.0.1:${API_PORT}/api/v1/operations/daily/history" \
   -H "Authorization: Bearer ${ASSET_API_TOKEN}"
 check_status \
+  "Daily schedule API" \
+  "200" \
+  "http://127.0.0.1:${API_PORT}/api/v1/operations/daily/schedule" \
+  -H "Authorization: Bearer ${ASSET_API_TOKEN}"
+check_status \
   "CEO approval queue" \
   "200" \
   "http://127.0.0.1:${API_PORT}/api/v1/approvals?limit=1" \

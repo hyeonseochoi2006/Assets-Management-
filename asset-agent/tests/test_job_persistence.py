@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -9,6 +10,45 @@ from operations.run_store import DailyRunStore
 
 def make_store(tmp_path: Path, lease_seconds: int = 30) -> JobStore:
     return JobStore(tmp_path / "operations.db", lease_seconds=lease_seconds)
+
+
+def test_existing_job_database_is_migrated_for_schedule_keys(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "operations.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE agent_jobs (
+                job_id TEXT PRIMARY KEY,
+                source TEXT NOT NULL,
+                command TEXT NOT NULL,
+                action TEXT NOT NULL,
+                ticker TEXT,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                agents_json TEXT NOT NULL,
+                result_type TEXT,
+                result TEXT,
+                error TEXT,
+                worker_id TEXT,
+                heartbeat_at TEXT,
+                lease_expires_at TEXT,
+                retry_of TEXT
+            )
+            """
+        )
+
+    JobStore(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(agent_jobs)").fetchall()
+        }
+    assert "schedule_key" in columns
 
 
 def test_completed_job_survives_store_restart(tmp_path: Path) -> None:

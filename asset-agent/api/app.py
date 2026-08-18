@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from api.auth import get_configured_api_token, require_api_token
 from api.job_store import JOB_STORE
+from api.scheduler import DAILY_SCHEDULER
 from api.service import (
     ActiveJobError,
     RetryJobError,
@@ -35,7 +36,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Fail closed: never serve portfolio or approval data without a strong token.
     get_configured_api_token()
     recover_interrupted_work()
-    yield
+    DAILY_SCHEDULER.start()
+    try:
+        yield
+    finally:
+        DAILY_SCHEDULER.stop()
 
 
 app = FastAPI(
@@ -45,7 +50,7 @@ app = FastAPI(
         "investment-agent company. Approval decisions are recorded but never "
         "place, modify, or cancel brokerage orders."
     ),
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -150,6 +155,11 @@ def get_daily_operations_history() -> dict[str, object]:
     return {
         "runs": RUN_STORE.recent_run_summaries(7),
     }
+
+
+@protected_api.get("/api/v1/operations/daily/schedule")
+def get_daily_operations_schedule() -> dict[str, object]:
+    return DAILY_SCHEDULER.snapshot()
 
 
 @protected_api.get("/api/v1/approvals")

@@ -42,6 +42,39 @@
   cursor: wait;
 }
 
+.daily-schedule-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid #27334a;
+  border-radius: 13px;
+  background: rgba(9, 15, 27, .78);
+}
+
+.daily-schedule-strip > div { min-width: 0; }
+
+.daily-schedule-strip span {
+  display: block;
+  margin-bottom: 4px;
+  color: #64738e;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+
+.daily-schedule-strip strong {
+  display: block;
+  color: #b9c5d8;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.daily-schedule-strip strong.schedule-on { color: #65d9a5; }
+.daily-schedule-strip strong.schedule-off { color: #f3bc59; }
+
 .daily-latest-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -87,6 +120,8 @@
 }
 
 .daily-run-status.status-failed,
+.daily-run-status.status-interrupted,
+.daily-history-right b.status-interrupted,
 .daily-history-right b.status-failed {
   color: #ff8282;
 }
@@ -212,6 +247,10 @@
   }
 
   .daily-latest-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .daily-schedule-strip {
     grid-template-columns: 1fr 1fr;
   }
 
