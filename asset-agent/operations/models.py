@@ -51,11 +51,44 @@ class PositionChange(BaseModel):
     fields: list[FieldChange] = Field(default_factory=list)
 
 
+class ChangeEvent(BaseModel):
+    """One deterministic, deduplicatable portfolio or research change."""
+
+    event_id: str
+    event_type: Literal[
+        "PRICE_CHANGE",
+        "QUANTITY_CHANGE",
+        "POSITION_VALUE_CHANGE",
+        "WEIGHT_CHANGE",
+        "CURRENCY_CHANGE",
+        "HOLDING_ADDED",
+        "HOLDING_REMOVED",
+        "FILING_FOUND",
+        "EARNINGS_CHANGED",
+        "NEWS_FOUND",
+    ]
+    symbol: str
+    severity: Literal["QUIET", "WATCH", "MATERIAL"]
+    recommended_route: Literal["STORE_ONLY", "MONITOR", "CIO_REVIEW"]
+    detected_at: str
+    source: str
+    previous: float | str | None = None
+    current: float | str | None = None
+    absolute_change: float | None = None
+    percent_change: float | None = None
+    reason: str
+    policy_version: str
+    evidence: list[str] = Field(default_factory=list)
+
+
 class ChangeSet(BaseModel):
     baseline: bool
     previous_captured_at: str | None = None
     current_captured_at: str
     changes: list[PositionChange] = Field(default_factory=list)
+    events: list[ChangeEvent] = Field(default_factory=list)
+    highest_severity: Literal["QUIET", "WATCH", "MATERIAL"] = "QUIET"
+    policy_version: str = "portfolio-change-v1"
     summary: str
 
 

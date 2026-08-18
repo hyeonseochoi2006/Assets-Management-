@@ -108,6 +108,34 @@ The scheduler runs only while the API server is running. Codespaces can sleep,
 so production-grade daily execution requires an always-on server and durable
 `ASSET_RUNTIME_DIR`. The scheduler never places, modifies, or cancels trades.
 
+### Deterministic portfolio change policy
+
+Daily Operations converts portfolio snapshot differences into standard change
+events. Each event is classified as `QUIET`, `WATCH`, or `MATERIAL` and receives
+a deterministic `event_id` so reprocessing the same two snapshots does not
+create a new identity. These levels route operational attention only; they are
+not trading signals, loss limits, or buy/sell decisions.
+
+The initial screening defaults are configurable:
+
+```bash
+export ASSET_CHANGE_PRICE_WATCH_PCT="3"
+export ASSET_CHANGE_PRICE_MATERIAL_PCT="7"
+export ASSET_CHANGE_WEIGHT_WATCH_POINTS="2"
+export ASSET_CHANGE_WEIGHT_MATERIAL_POINTS="5"
+export ASSET_CHANGE_QUANTITY_MATERIAL_PCT="25"
+export ASSET_CHANGE_VALUE_WATCH_PCT="5"
+export ASSET_CHANGE_VALUE_MATERIAL_PCT="10"
+```
+
+Missing variables use the defaults above. Invalid numbers or a material
+threshold lower than its watch threshold fail closed instead of silently
+changing the routing policy. Adding/removing a holding is always classified as
+`MATERIAL`; a currency change is `WATCH` because it may indicate an identity or
+data-quality issue. News, filing, and earnings event types are reserved in the
+common model but their collectors are intentionally deferred to the later
+change-intelligence step.
+
 Install development dependencies and run the authentication tests:
 
 ```bash
