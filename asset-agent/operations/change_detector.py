@@ -1,5 +1,7 @@
+from collections import Counter, defaultdict
 import hashlib
 import json
+import math
 from typing import Literal
 
 from operations.change_policy import PortfolioChangePolicy
@@ -9,6 +11,7 @@ from operations.models import (
     FieldChange,
     PortfolioSnapshot,
     PositionChange,
+    SymbolChangeSummary,
 )
 
 
@@ -29,6 +32,86 @@ _FIELD_EVENT_TYPES = {
 }
 
 _SEVERITY_RANK = {"QUIET": 0, "WATCH": 1, "MATERIAL": 2}
+
+_EVENT_PRIORITY = {
+    "DATA_QUALITY_WARNING": 100,
+    "HOLDING_REMOVED": 90,
+    "HOLDING_ADDED": 90,
+    "HOLDING_MISSING_UNCONFIRMED": 80,
+    "QUANTITY_CHANGE": 70,
+    "PRICE_CHANGE": 60,
+    "WEIGHT_CHANGE": 50,
+    "POSITION_VALUE_CHANGE": 40,
+    "CURRENCY_CHANGE": 30,
+}
+
+
+def _validate_snapshots(
+    previous: PortfolioSnapshot | None,
+    current: PortfolioSnapshot,
+) -> tuple[Literal["VALID", "WARNING", "BLOCKED"], list[str]]:
+    blocking: list[str] = []
+    warnings: list[str] = []
+
+    if previous is not None and previous.account_seq != current.account_seq:
+        blocking.append("Current snapshot belongs to a different account than the baseline.")
+
+    numeric_fields = ("quantity", "price", "position_value", "weight_pct")
+    snapshots = [("Current", current)]
+    if previous is not None:
+        snapshots.append(("Previous", previous))
+
+    for label, snapshot in snapshots:
+        symbols = [position.symbol.strip().upper() for position in snapshot.positions]
+        if any(not symbol for symbol in symbols):
+            blocking.append(f"{label} snapshot contains a blank holding symbol.")
+        duplicates = sorted(
+            symbol for symbol, count in Counter(symbols).items() if count > 1
+        )
+        if duplicates:
+            blocking.append(
+                f"{label} snapshot contains duplicate holding symbols: "
+                + ", ".join(duplicates)
+                + "."
+            )
+
+        for position in snapshot.positions:
+            missing = [
+                field for field in numeric_fields if getattr(position, field) is None
+            ]
+            if missing:
+                warnings.append(
+                    f"{label} {position.symbol}: missing numeric fields: "
+                    + ", ".join(missing)
+                    + "."
+                )
+            for field in numeric_fields:
+                value = getattr(position, field)
+                if value is None:
+                    continue
+                if not math.isfinite(value):
+                    blocking.append(
+                        f"{label} {position.symbol}: {field} is not finite."
+                    )
+                elif value < 0:
+                    blocking.append(
+                        f"{label} {position.symbol}: {field} is negative."
+                    )
+            if position.weight_pct is not None and position.weight_pct > 100:
+                blocking.append(
+                    f"{label} {position.symbol}: weight_pct is greater than 100."
+                )
+
+    if previous is not None and previous.positions and not current.positions:
+        warnings.append(
+            "All previously observed holdings are absent; removal requires a second observation."
+        )
+
+    if blocking:
+        return "BLOCKED", blocking + warnings
+    if warnings:
+        return "WARNING", warnings
+    return "VALID", []
 
 
 def _percent_change(previous: object, current: object) -> float | None:
@@ -152,7 +235,7 @@ def _classify_field_change(
     return "QUIET", "Observable change recorded without a matching escalation rule."
 
 
-def _build_event(
+def build_change_event(
     *,
     event_type: str,
     symbol: str,
@@ -203,6 +286,69 @@ def _highest_severity(
     return max(events, key=lambda event: _SEVERITY_RANK[event.severity]).severity
 
 
+def group_change_events(events: list[ChangeEvent]) -> list[SymbolChangeSummary]:
+    """Keep raw audit events while presenting one non-duplicative summary per symbol."""
+    grouped: dict[str, list[ChangeEvent]] = defaultdict(list)
+    for event in events:
+        grouped[event.symbol].append(event)
+
+    summaries: list[SymbolChangeSummary] = []
+    for symbol in sorted(grouped):
+        symbol_events = grouped[symbol]
+        primary = max(
+            symbol_events,
+            key=lambda event: (
+                _SEVERITY_RANK[event.severity],
+                _EVENT_PRIORITY.get(event.event_type, 0),
+            ),
+        )
+        related_types = list(
+            dict.fromkeys(
+                event.event_type
+                for event in symbol_events
+                if event.event_id != primary.event_id
+            )
+        )
+        summaries.append(
+            SymbolChangeSummary(
+                symbol=symbol,
+                severity=primary.severity,
+                primary_event_id=primary.event_id,
+                primary_event_type=primary.event_type,
+                related_event_types=related_types,
+                event_ids=[event.event_id for event in symbol_events],
+                reason=primary.reason,
+            )
+        )
+    return summaries
+
+
+def refresh_change_set(change_set: ChangeSet) -> ChangeSet:
+    """Recompute derived routing fields after durable confirmation adds an event."""
+    change_set.highest_severity = _highest_severity(change_set.events)
+    change_set.symbol_summaries = group_change_events(change_set.events)
+    if change_set.events:
+        severity_counts = {
+            severity: sum(event.severity == severity for event in change_set.events)
+            for severity in ("QUIET", "WATCH", "MATERIAL")
+        }
+        change_set.summary = (
+            f"Observed {len(change_set.changes)} position-level change record(s) "
+            f"across {len(change_set.symbol_summaries)} grouped subject(s). "
+            f"Operational events: QUIET={severity_counts['QUIET']}, "
+            f"WATCH={severity_counts['WATCH']}, "
+            f"MATERIAL={severity_counts['MATERIAL']}. "
+            f"Data quality: {change_set.data_quality}. "
+            "These are attention-routing thresholds, not buy/sell conclusions."
+        )
+    elif not change_set.baseline:
+        change_set.summary = (
+            "No observable position-level differences from the previous snapshot. "
+            f"Data quality: {change_set.data_quality}."
+        )
+    return change_set
+
+
 def compare_portfolio_snapshots(
     previous: PortfolioSnapshot | None,
     current: PortfolioSnapshot,
@@ -210,25 +356,68 @@ def compare_portfolio_snapshots(
 ) -> ChangeSet:
     """Compare facts and apply deterministic operational attention thresholds."""
     selected_policy = policy or PortfolioChangePolicy.from_env()
-    if previous is None:
-        return ChangeSet(
-            baseline=True,
-            previous_captured_at=None,
-            current_captured_at=current.captured_at,
-            changes=[],
-            events=[],
-            highest_severity="QUIET",
-            policy_version=selected_policy.version,
-            summary=(
-                "BASELINE_CAPTURED — no previous portfolio snapshot exists yet. "
-                "No operational threshold or investment conclusion was applied."
-            ),
+    data_quality, validation_issues = _validate_snapshots(previous, current)
+    validation_events: list[ChangeEvent] = []
+    if validation_issues:
+        validation_events.append(
+            build_change_event(
+                event_type="DATA_QUALITY_WARNING",
+                symbol="PORTFOLIO",
+                severity="WATCH",
+                detected_at=current.captured_at,
+                previous_captured_at=(
+                    previous.captured_at if previous is not None else None
+                ),
+                previous=None,
+                current=None,
+                reason=" ".join(validation_issues),
+                policy=selected_policy,
+            )
         )
 
-    previous_by_symbol = {position.symbol: position for position in previous.positions}
-    current_by_symbol = {position.symbol: position for position in current.positions}
+    if data_quality == "BLOCKED":
+        return refresh_change_set(
+            ChangeSet(
+                baseline=previous is None,
+                previous_captured_at=(
+                    previous.captured_at if previous is not None else None
+                ),
+                current_captured_at=current.captured_at,
+                changes=[],
+                events=validation_events,
+                data_quality=data_quality,
+                validation_issues=validation_issues,
+                policy_version=selected_policy.version,
+                summary="Snapshot comparison blocked by deterministic data validation.",
+            )
+        )
+
+    if previous is None:
+        return refresh_change_set(
+            ChangeSet(
+                baseline=True,
+                previous_captured_at=None,
+                current_captured_at=current.captured_at,
+                changes=[],
+                events=validation_events,
+                data_quality=data_quality,
+                validation_issues=validation_issues,
+                policy_version=selected_policy.version,
+                summary=(
+                    "BASELINE_CAPTURED — no previous portfolio snapshot exists yet. "
+                    "No operational threshold or investment conclusion was applied."
+                ),
+            )
+        )
+
+    previous_by_symbol = {
+        position.symbol.strip().upper(): position for position in previous.positions
+    }
+    current_by_symbol = {
+        position.symbol.strip().upper(): position for position in current.positions
+    }
     changes: list[PositionChange] = []
-    events: list[ChangeEvent] = []
+    events: list[ChangeEvent] = list(validation_events)
 
     all_symbols = sorted(set(previous_by_symbol) | set(current_by_symbol))
     for symbol in all_symbols:
@@ -240,7 +429,7 @@ def compare_portfolio_snapshots(
                 PositionChange(symbol=symbol, change_type="ADDED", fields=[])
             )
             events.append(
-                _build_event(
+                build_change_event(
                     event_type="HOLDING_ADDED",
                     symbol=symbol,
                     severity="MATERIAL",
@@ -256,18 +445,25 @@ def compare_portfolio_snapshots(
 
         if old is not None and new is None:
             changes.append(
-                PositionChange(symbol=symbol, change_type="REMOVED", fields=[])
+                PositionChange(
+                    symbol=symbol,
+                    change_type="MISSING_UNCONFIRMED",
+                    fields=[],
+                )
             )
             events.append(
-                _build_event(
-                    event_type="HOLDING_REMOVED",
+                build_change_event(
+                    event_type="HOLDING_MISSING_UNCONFIRMED",
                     symbol=symbol,
-                    severity="MATERIAL",
+                    severity="WATCH",
                     detected_at=current.captured_at,
                     previous_captured_at=previous.captured_at,
                     previous=old.quantity,
                     current=None,
-                    reason="A previously observed holding is absent from the current snapshot.",
+                    reason=(
+                        "A previously observed holding is absent once; a second "
+                        "observation is required before confirming removal."
+                    ),
                     policy=selected_policy,
                 )
             )
@@ -288,7 +484,7 @@ def compare_portfolio_snapshots(
                     field, old_value, new_value, selected_policy
                 )
                 events.append(
-                    _build_event(
+                    build_change_event(
                         event_type=_FIELD_EVENT_TYPES[field],
                         symbol=symbol,
                         severity=severity,
@@ -306,28 +502,16 @@ def compare_portfolio_snapshots(
                 PositionChange(symbol=symbol, change_type="UPDATED", fields=field_changes)
             )
 
-    highest_severity = _highest_severity(events)
-    if changes:
-        severity_counts = {
-            severity: sum(event.severity == severity for event in events)
-            for severity in ("QUIET", "WATCH", "MATERIAL")
-        }
-        summary = (
-            f"Observed {len(changes)} position-level change record(s). "
-            f"Operational events: QUIET={severity_counts['QUIET']}, "
-            f"WATCH={severity_counts['WATCH']}, MATERIAL={severity_counts['MATERIAL']}. "
-            "These are attention-routing thresholds, not buy/sell conclusions."
+    return refresh_change_set(
+        ChangeSet(
+            baseline=False,
+            previous_captured_at=previous.captured_at,
+            current_captured_at=current.captured_at,
+            changes=changes,
+            events=events,
+            data_quality=data_quality,
+            validation_issues=validation_issues,
+            policy_version=selected_policy.version,
+            summary="",
         )
-    else:
-        summary = "No observable position-level differences from the previous snapshot."
-
-    return ChangeSet(
-        baseline=False,
-        previous_captured_at=previous.captured_at,
-        current_captured_at=current.captured_at,
-        changes=changes,
-        events=events,
-        highest_severity=highest_severity,
-        policy_version=selected_policy.version,
-        summary=summary,
     )

@@ -136,6 +136,28 @@ data-quality issue. News, filing, and earnings event types are reserved in the
 common model but their collectors are intentionally deferred to the later
 change-intelligence step.
 
+Portfolio snapshots are validated before comparison. A different account,
+duplicate/blank symbol, non-finite number, negative holding value, or weight
+above 100% blocks comparison and produces a data-quality event instead of a
+false investment event. Missing numeric fields and a suddenly empty portfolio
+are retained as warnings. A blocked snapshot remains attached to its run for
+audit but is never promoted to the next comparison baseline.
+
+Raw price, value, weight, quantity, and currency events remain available for
+audit, while `symbol_summaries` presents one primary event per symbol so a
+single market move is not counted as several independent developments. Events
+are stored in the SQLite `change_events` ledger with `event_id` as the primary
+key; reprocessing the same event updates its seen count instead of inserting a
+duplicate.
+
+A holding that disappears is first recorded as
+`HOLDING_MISSING_UNCONFIRMED` (`WATCH`). It becomes `HOLDING_REMOVED`
+(`MATERIAL`) only when it remains absent in a second consecutive snapshot. A
+reappearance clears the pending confirmation. This confirmation is an
+operational portfolio observation, not proof of a trade placed by this system.
+A reappearance after only one missing snapshot is treated as a closed transient
+data gap, not as a newly added holding.
+
 Install development dependencies and run the authentication tests:
 
 ```bash

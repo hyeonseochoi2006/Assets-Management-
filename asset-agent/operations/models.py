@@ -47,7 +47,7 @@ class FieldChange(BaseModel):
 
 class PositionChange(BaseModel):
     symbol: str
-    change_type: Literal["ADDED", "REMOVED", "UPDATED"]
+    change_type: Literal["ADDED", "MISSING_UNCONFIRMED", "REMOVED", "UPDATED"]
     fields: list[FieldChange] = Field(default_factory=list)
 
 
@@ -62,7 +62,9 @@ class ChangeEvent(BaseModel):
         "WEIGHT_CHANGE",
         "CURRENCY_CHANGE",
         "HOLDING_ADDED",
+        "HOLDING_MISSING_UNCONFIRMED",
         "HOLDING_REMOVED",
+        "DATA_QUALITY_WARNING",
         "FILING_FOUND",
         "EARNINGS_CHANGED",
         "NEWS_FOUND",
@@ -81,13 +83,32 @@ class ChangeEvent(BaseModel):
     evidence: list[str] = Field(default_factory=list)
 
 
+class SymbolChangeSummary(BaseModel):
+    symbol: str
+    severity: Literal["QUIET", "WATCH", "MATERIAL"]
+    primary_event_id: str
+    primary_event_type: str
+    related_event_types: list[str] = Field(default_factory=list)
+    event_ids: list[str] = Field(default_factory=list)
+    reason: str
+
+
+class EventPersistenceSummary(BaseModel):
+    inserted: int = 0
+    duplicates: int = 0
+
+
 class ChangeSet(BaseModel):
     baseline: bool
     previous_captured_at: str | None = None
     current_captured_at: str
     changes: list[PositionChange] = Field(default_factory=list)
     events: list[ChangeEvent] = Field(default_factory=list)
+    symbol_summaries: list[SymbolChangeSummary] = Field(default_factory=list)
     highest_severity: Literal["QUIET", "WATCH", "MATERIAL"] = "QUIET"
+    data_quality: Literal["VALID", "WARNING", "BLOCKED"] = "VALID"
+    validation_issues: list[str] = Field(default_factory=list)
+    persistence: EventPersistenceSummary | None = None
     policy_version: str = "portfolio-change-v1"
     summary: str
 

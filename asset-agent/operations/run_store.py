@@ -121,20 +121,27 @@ class DailyRunStore:
             return None
         return PortfolioSnapshot.model_validate_json(row["snapshot_json"])
 
-    def save_snapshot(self, run_id: str, snapshot: PortfolioSnapshot) -> None:
+    def save_snapshot(
+        self,
+        run_id: str,
+        snapshot: PortfolioSnapshot,
+        *,
+        baseline_eligible: bool = True,
+    ) -> None:
         payload = snapshot.model_dump_json()
         with self._lock, self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO portfolio_snapshots(run_id, captured_at, snapshot_json)
-                VALUES (?, ?, ?)
-                """,
-                (run_id, snapshot.captured_at, payload),
-            )
             connection.execute(
                 "UPDATE daily_runs SET snapshot_json = ? WHERE run_id = ?",
                 (payload, run_id),
             )
+            if baseline_eligible:
+                connection.execute(
+                    """
+                    INSERT INTO portfolio_snapshots(run_id, captured_at, snapshot_json)
+                    VALUES (?, ?, ?)
+                    """,
+                    (run_id, snapshot.captured_at, payload),
+                )
 
     def complete_run(
         self,

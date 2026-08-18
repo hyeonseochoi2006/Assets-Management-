@@ -7,6 +7,7 @@ from departments.opportunity import run_opportunity_scout
 from executive.daily_cio import run_daily_cio_decision
 from operations.approval_store import APPROVAL_STORE
 from operations.change_detector import compare_portfolio_snapshots
+from operations.change_event_store import CHANGE_EVENT_STORE
 from operations.models import OpportunityScoutReport
 from operations.run_store import RUN_STORE
 from reporting.briefing import run_korean_ceo_brief
@@ -48,7 +49,12 @@ def run_daily_operations(
         )
         readable_snapshot, current_snapshot = get_live_portfolio_snapshots()
         changes = compare_portfolio_snapshots(previous_snapshot, current_snapshot)
-        RUN_STORE.save_snapshot(run_id, current_snapshot)
+        changes = CHANGE_EVENT_STORE.process(run_id, current_snapshot, changes)
+        RUN_STORE.save_snapshot(
+            run_id,
+            current_snapshot,
+            baseline_eligible=changes.data_quality != "BLOCKED",
+        )
         _emit(
             status_callback,
             "Portfolio",

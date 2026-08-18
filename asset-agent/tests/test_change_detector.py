@@ -84,7 +84,7 @@ def test_weight_uses_percentage_points_not_percent_change() -> None:
     assert event.severity == "WATCH"
 
 
-def test_added_and_removed_holdings_are_material() -> None:
+def test_added_holding_is_material_but_first_missing_observation_is_not() -> None:
     previous = snapshot("2026-08-17T08:00:00+00:00", symbol="GOOGL")
     current = snapshot("2026-08-18T08:00:00+00:00", symbol="NVDA")
 
@@ -93,10 +93,73 @@ def test_added_and_removed_holdings_are_material() -> None:
     assert [
         (event.symbol, event.event_type, event.severity) for event in result.events
     ] == [
-        ("GOOGL", "HOLDING_REMOVED", "MATERIAL"),
+        ("GOOGL", "HOLDING_MISSING_UNCONFIRMED", "WATCH"),
         ("NVDA", "HOLDING_ADDED", "MATERIAL"),
     ]
     assert result.highest_severity == "MATERIAL"
+
+
+def test_related_price_value_and_weight_events_have_one_symbol_summary() -> None:
+    previous = snapshot("2026-08-17T08:00:00+00:00")
+    current = snapshot(
+        "2026-08-18T08:00:00+00:00",
+        price=105.0,
+        position_value=525.0,
+        weight_pct=11.0,
+    )
+
+    result = compare_portfolio_snapshots(previous, current)
+
+    assert len(result.events) == 3
+    assert len(result.symbol_summaries) == 1
+    summary = result.symbol_summaries[0]
+    assert summary.symbol == "GOOGL"
+    assert summary.primary_event_type == "PRICE_CHANGE"
+    assert summary.severity == "WATCH"
+    assert set(summary.related_event_types) == {
+        "POSITION_VALUE_CHANGE",
+        "WEIGHT_CHANGE",
+    }
+
+
+def test_duplicate_symbols_block_snapshot_comparison() -> None:
+    current = snapshot("2026-08-18T08:00:00+00:00")
+    current.positions.append(current.positions[0].model_copy())
+
+    result = compare_portfolio_snapshots(
+        snapshot("2026-08-17T08:00:00+00:00"),
+        current,
+    )
+
+    assert result.data_quality == "BLOCKED"
+    assert result.changes == []
+    assert [event.event_type for event in result.events] == ["DATA_QUALITY_WARNING"]
+    assert "duplicate holding symbols" in result.validation_issues[0]
+
+
+def test_different_account_blocks_snapshot_comparison() -> None:
+    previous = snapshot("2026-08-17T08:00:00+00:00")
+    current = snapshot("2026-08-18T08:00:00+00:00")
+    current.account_seq = "different-account"
+
+    result = compare_portfolio_snapshots(previous, current)
+
+    assert result.data_quality == "BLOCKED"
+    assert result.changes == []
+    assert "different account" in result.validation_issues[0]
+
+
+def test_non_finite_number_blocks_before_event_hashing() -> None:
+    current = snapshot("2026-08-18T08:00:00+00:00", price=float("nan"))
+
+    result = compare_portfolio_snapshots(
+        snapshot("2026-08-17T08:00:00+00:00"),
+        current,
+    )
+
+    assert result.data_quality == "BLOCKED"
+    assert result.changes == []
+    assert "not finite" in result.validation_issues[0]
 
 
 def test_event_id_is_stable_when_same_snapshots_are_reprocessed() -> None:
