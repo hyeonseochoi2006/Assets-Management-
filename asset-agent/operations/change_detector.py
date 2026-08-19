@@ -37,9 +37,12 @@ _EVENT_PRIORITY = {
     "DATA_QUALITY_WARNING": 100,
     "HOLDING_REMOVED": 90,
     "HOLDING_ADDED": 90,
+    "EARNINGS_CHANGED": 85,
     "HOLDING_MISSING_UNCONFIRMED": 80,
+    "FILING_FOUND": 75,
     "QUANTITY_CHANGE": 70,
     "PRICE_CHANGE": 60,
+    "NEWS_FOUND": 55,
     "WEIGHT_CHANGE": 50,
     "POSITION_VALUE_CHANGE": 40,
     "CURRENCY_CHANGE": 30,
@@ -246,17 +249,25 @@ def build_change_event(
     current: float | str | None,
     reason: str,
     policy: PortfolioChangePolicy,
+    source: str = "PORTFOLIO_SNAPSHOT_COMPARISON",
+    identity_key: str | None = None,
+    evidence: list[str] | None = None,
 ) -> ChangeEvent:
-    source = "PORTFOLIO_SNAPSHOT_COMPARISON"
     identity = {
         "event_type": event_type,
         "symbol": symbol,
         "source": source,
-        "previous_captured_at": previous_captured_at,
-        "current_captured_at": detected_at,
-        "previous": previous,
-        "current": current,
+        "identity_key": identity_key,
     }
+    if identity_key is None:
+        identity.update(
+            {
+                "previous_captured_at": previous_captured_at,
+                "current_captured_at": detected_at,
+                "previous": previous,
+                "current": current,
+            }
+        )
     return ChangeEvent(
         event_id=_event_id(identity),
         event_type=event_type,
@@ -271,7 +282,8 @@ def build_change_event(
         percent_change=_percent_change(previous, current),
         reason=reason,
         policy_version=policy.version,
-        evidence=[
+        evidence=evidence
+        or [
             f"previous_snapshot={previous_captured_at or 'NONE'}",
             f"current_snapshot={detected_at}",
         ],

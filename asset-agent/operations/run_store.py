@@ -39,6 +39,7 @@ class DailyRunStore:
                     status TEXT NOT NULL,
                     snapshot_json TEXT,
                     changes_json TEXT,
+                    external_changes_json TEXT,
                     monitoring_json TEXT,
                     opportunities_json TEXT,
                     cio_json TEXT,
@@ -67,6 +68,10 @@ class DailyRunStore:
             if "opportunities_json" not in columns:
                 connection.execute(
                     "ALTER TABLE daily_runs ADD COLUMN opportunities_json TEXT"
+                )
+            if "external_changes_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE daily_runs ADD COLUMN external_changes_json TEXT"
                 )
             if "job_id" not in columns:
                 connection.execute("ALTER TABLE daily_runs ADD COLUMN job_id TEXT")
@@ -148,6 +153,7 @@ class DailyRunStore:
         run_id: str,
         completed_at: str,
         changes: dict[str, object],
+        external_changes: dict[str, object],
         monitoring: dict[str, object],
         opportunities: dict[str, object],
         cio: dict[str, object],
@@ -160,6 +166,7 @@ class DailyRunStore:
                 SET completed_at = ?,
                     status = 'COMPLETED',
                     changes_json = ?,
+                    external_changes_json = ?,
                     monitoring_json = ?,
                     opportunities_json = ?,
                     cio_json = ?,
@@ -170,6 +177,7 @@ class DailyRunStore:
                 (
                     completed_at,
                     json.dumps(changes, ensure_ascii=False),
+                    json.dumps(external_changes, ensure_ascii=False),
                     json.dumps(monitoring, ensure_ascii=False),
                     json.dumps(opportunities, ensure_ascii=False),
                     json.dumps(cio, ensure_ascii=False),
@@ -202,6 +210,7 @@ class DailyRunStore:
         for key in (
             "snapshot_json",
             "changes_json",
+            "external_changes_json",
             "monitoring_json",
             "opportunities_json",
             "cio_json",
@@ -216,7 +225,7 @@ class DailyRunStore:
             rows = connection.execute(
                 """
                 SELECT run_id, started_at, completed_at, status,
-                       changes_json, monitoring_json, opportunities_json,
+                       changes_json, external_changes_json, monitoring_json, opportunities_json,
                        cio_json, briefing, error
                 FROM daily_runs
                 ORDER BY started_at DESC
@@ -230,6 +239,11 @@ class DailyRunStore:
             changes = json.loads(row["changes_json"]) if row["changes_json"] else None
             monitoring = (
                 json.loads(row["monitoring_json"]) if row["monitoring_json"] else None
+            )
+            external_changes = (
+                json.loads(row["external_changes_json"])
+                if row["external_changes_json"]
+                else None
             )
             opportunities = (
                 json.loads(row["opportunities_json"])
@@ -253,6 +267,11 @@ class DailyRunStore:
                     "summary": cio.get("summary") if cio else None,
                     "affected_tickers": cio.get("affected_tickers", []) if cio else [],
                     "change_count": len(changes.get("changes", [])) if changes else 0,
+                    "external_event_count": (
+                        external_changes.get("events_created", 0)
+                        if external_changes
+                        else 0
+                    ),
                     "finding_count": (
                         len(monitoring.get("findings", [])) if monitoring else 0
                     ),

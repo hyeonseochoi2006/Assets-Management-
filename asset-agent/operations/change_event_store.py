@@ -75,6 +75,7 @@ class ChangeEventStore:
         current: PortfolioSnapshot,
         change_set: ChangeSet,
         policy: PortfolioChangePolicy | None = None,
+        additional_events: list[ChangeEvent] | None = None,
     ) -> ChangeSet:
         selected_policy = policy or PortfolioChangePolicy.from_env()
         if change_set.data_quality != "BLOCKED":
@@ -131,6 +132,7 @@ class ChangeEventStore:
                 else:
                     matching_change.change_type = "REMOVED"
 
+        change_set.events.extend(additional_events or [])
         refresh_change_set(change_set)
         change_set.persistence = self.save_events(run_id, change_set.events)
         return change_set

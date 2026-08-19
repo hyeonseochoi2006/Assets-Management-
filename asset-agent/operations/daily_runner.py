@@ -8,6 +8,7 @@ from executive.daily_cio import run_daily_cio_decision
 from operations.approval_store import APPROVAL_STORE
 from operations.change_detector import compare_portfolio_snapshots
 from operations.change_event_store import CHANGE_EVENT_STORE
+from operations.external_changes import run_external_change_detection
 from operations.models import OpportunityScoutReport
 from operations.run_store import RUN_STORE
 from reporting.briefing import run_korean_ceo_brief
@@ -49,7 +50,28 @@ def run_daily_operations(
         )
         readable_snapshot, current_snapshot = get_live_portfolio_snapshots()
         changes = compare_portfolio_snapshots(previous_snapshot, current_snapshot)
-        changes = CHANGE_EVENT_STORE.process(run_id, current_snapshot, changes)
+
+        _emit(
+            status_callback,
+            "Analysis",
+            "WORKING",
+            "Daily Operations · 공식 공시 저비용 변화 확인",
+        )
+        external_changes, external_events = run_external_change_detection(
+            current_snapshot
+        )
+        changes = CHANGE_EVENT_STORE.process(
+            run_id,
+            current_snapshot,
+            changes,
+            additional_events=external_events,
+        )
+        _emit(
+            status_callback,
+            "Analysis",
+            "DONE",
+            "Daily Operations · 공식 공시 저비용 변화 확인",
+        )
         RUN_STORE.save_snapshot(
             run_id,
             current_snapshot,
@@ -138,6 +160,8 @@ def run_daily_operations(
                 [
                     "DAILY CIO DECISION:\n" + cio_decision.model_dump_json(indent=2),
                     "DETERMINISTIC PORTFOLIO CHANGES:\n" + changes.model_dump_json(indent=2),
+                    "OFFICIAL EXTERNAL CHANGES:\n"
+                    + external_changes.model_dump_json(indent=2),
                     "DAILY MONITORING:\n" + monitoring.model_dump_json(indent=2),
                     "OPPORTUNITY SCOUT:\n" + opportunities.model_dump_json(indent=2),
                 ]
@@ -176,6 +200,7 @@ def run_daily_operations(
             run_id=run_id,
             completed_at=completed_at,
             changes=changes.model_dump(),
+            external_changes=external_changes.model_dump(),
             monitoring=monitoring.model_dump(),
             opportunities=opportunities.model_dump(),
             cio=cio_decision.model_dump(),
@@ -188,6 +213,7 @@ def run_daily_operations(
             "started_at": started_at,
             "completed_at": completed_at,
             "changes": changes.model_dump(),
+            "external_changes": external_changes.model_dump(),
             "monitoring": monitoring.model_dump(),
             "opportunities": opportunities.model_dump(),
             "cio": cio_decision.model_dump(),

@@ -132,9 +132,32 @@ Missing variables use the defaults above. Invalid numbers or a material
 threshold lower than its watch threshold fail closed instead of silently
 changing the routing policy. Adding/removing a holding is always classified as
 `MATERIAL`; a currency change is `WATCH` because it may indicate an identity or
-data-quality issue. News, filing, and earnings event types are reserved in the
-common model but their collectors are intentionally deferred to the later
-change-intelligence step.
+data-quality issue.
+
+The first external change-intelligence collector checks official SEC EDGAR
+filings for exact, Toss-resolved U.S. stock positions. It uses deterministic
+comparison only; no AI is needed to discover a filing. Configure the SEC
+required identifying User-Agent before enabling requests:
+
+```bash
+export ASSET_SEC_USER_AGENT="Asset Agent your-email@example.com"
+```
+
+Without that variable, Daily Operations records `NOT_CONFIGURED`, sends no SEC
+request, and does not falsely report "no change." The first successful check
+stores a baseline and produces no alerts for old filings. Later checks create a
+deduplicated `FILING_FOUND` event only for a newly observed accession number.
+Important periodic/current report forms such as 10-K, 10-Q, 8-K, 20-F, 40-F,
+and 6-K are routed as `WATCH`; other forms are stored as `QUIET`. Form type alone
+does not prove that earnings changed, so this collector does not manufacture an
+`EARNINGS_CHANGED` claim.
+
+The collector uses SEC JSON endpoints with a conservative maximum of five
+requests per second, stores official archive URLs as evidence, and treats an
+HTTP, format, or identity failure as `UNAVAILABLE` or `UNSUPPORTED` rather than
+"no change." Company IR and licensed news sources remain explicitly
+`NOT_CONFIGURED`; the application does not guess IR pages or scrape article
+bodies.
 
 Portfolio snapshots are validated before comparison. A different account,
 duplicate/blank symbol, non-finite number, negative holding value, or weight
