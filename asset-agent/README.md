@@ -92,21 +92,52 @@ it only after selecting an explicit local time and IANA timezone:
 
 ```bash
 export ASSET_DAILY_SCHEDULE_ENABLED="true"
-export ASSET_DAILY_TIME="08:00"
-export ASSET_TIMEZONE="America/Vancouver"
+export ASSET_DAILY_SCAN_TIMES="08:30,12:30"
+export ASSET_DAILY_TIME="17:30"
+export ASSET_TIMEZONE="America/New_York"
 export ASSET_DAILY_MISFIRE_GRACE_MINUTES="120"
 ```
 
-Exactly one automatic Daily Operations job can be created per local calendar
-date. If the server returns within the grace window, it performs one catch-up
-run. If it returns later, that date is recorded as `SKIPPED` and no analysis
-cost is incurred. CEO commands already in progress take priority; the
+The operating pattern is two low-cost `SCAN` checks at 08:30 and 12:30,
+followed by one `CLOSE` check at 17:30. All times use the configured IANA
+timezone, so `America/New_York` follows daylight-saving changes. Exactly one
+automatic job can be created for each dated slot. If the server returns within
+the grace window, it performs one catch-up run. If it returns later, that slot
+is recorded as `SKIPPED`. CEO commands already in progress take priority; the
 scheduler retries until the grace window closes. Schedule state is available
 through the authenticated `/api/v1/operations/daily/schedule` endpoint.
+Saturday and Sunday are skipped. An exchange-holiday calendar is not yet
+configured, so a weekday U.S. market holiday can still run a low-cost check.
 
 The scheduler runs only while the API server is running. Codespaces can sleep,
 so production-grade daily execution requires an always-on server and durable
 `ASSET_RUNTIME_DIR`. The scheduler never places, modifies, or cancels trades.
+
+### Deterministic AI analysis gate
+
+Every scheduled run collects the portfolio snapshot and checks configured
+official sources before any AI call is permitted. The gate returns one of:
+
+- `SKIP_AI`: store the observation and finish without Monitoring, CIO,
+  Opportunity Scout, or Briefing AI calls.
+- `TARGETED_REVIEW`: send only holdings connected to a reviewable `WATCH`
+  event, such as a new important SEC filing, to Monitoring and CIO.
+- `CIO_REVIEW`: route a `MATERIAL` event or blocked data-quality condition to
+  CIO; company web monitoring runs only when there is a current affected
+  holding.
+
+Routine price/value movement alone is stored without AI at the `WATCH` level.
+A material movement, important filing, meaningful weight/quantity/currency
+change, missing holding, or blocking data-quality event can open the gate.
+Intraday scans compare with the immediately prior observation. The final
+`CLOSE` check also measures price, position value, and weight from the prior
+`CLOSE` snapshot. This prevents several small intraday intervals from hiding a
+large cumulative daily move without repeatedly reporting the same holding
+addition at every scan.
+Opportunity Scout is deliberately separated from these routine scans because
+unrelated daily discovery would spend AI tokens even when the portfolio had no
+change. A later approved weekly opportunity cadence can add it back without
+weakening this gate.
 
 ### Deterministic portfolio change policy
 

@@ -113,6 +113,20 @@ class ChangeSet(BaseModel):
     summary: str
 
 
+class DailyAnalysisGate(BaseModel):
+    """Deterministic decision about whether this scan may spend AI tokens."""
+
+    decision: Literal["SKIP_AI", "TARGETED_REVIEW", "CIO_REVIEW"]
+    run_kind: Literal["SCAN", "CLOSE"]
+    ai_monitoring_required: bool
+    ai_cio_required: bool
+    opportunity_scout_required: bool = False
+    targeted_symbols: list[str] = Field(default_factory=list)
+    triggering_event_ids: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    policy_version: str = "daily-analysis-gate-v1"
+
+
 class MonitoringFinding(BaseModel):
     ticker: str
     category: str

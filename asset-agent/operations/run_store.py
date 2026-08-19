@@ -37,9 +37,11 @@ class DailyRunStore:
                     started_at TEXT NOT NULL,
                     completed_at TEXT,
                     status TEXT NOT NULL,
+                    run_kind TEXT NOT NULL DEFAULT 'CLOSE',
                     snapshot_json TEXT,
                     changes_json TEXT,
                     external_changes_json TEXT,
+                    gate_json TEXT,
                     monitoring_json TEXT,
                     opportunities_json TEXT,
                     cio_json TEXT,
@@ -51,6 +53,7 @@ class DailyRunStore:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id TEXT NOT NULL,
                     captured_at TEXT NOT NULL,
+                    run_kind TEXT NOT NULL DEFAULT 'CLOSE',
                     snapshot_json TEXT NOT NULL,
                     FOREIGN KEY(run_id) REFERENCES daily_runs(run_id)
                 );
@@ -73,6 +76,25 @@ class DailyRunStore:
                 connection.execute(
                     "ALTER TABLE daily_runs ADD COLUMN external_changes_json TEXT"
                 )
+            if "run_kind" not in columns:
+                connection.execute(
+                    "ALTER TABLE daily_runs ADD COLUMN run_kind TEXT NOT NULL DEFAULT 'CLOSE'"
+                )
+            if "gate_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE daily_runs ADD COLUMN gate_json TEXT"
+                )
+            snapshot_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(portfolio_snapshots)"
+                ).fetchall()
+            }
+            if "run_kind" not in snapshot_columns:
+                connection.execute(
+                    "ALTER TABLE portfolio_snapshots "
+                    "ADD COLUMN run_kind TEXT NOT NULL DEFAULT 'CLOSE'"
+                )
             if "job_id" not in columns:
                 connection.execute("ALTER TABLE daily_runs ADD COLUMN job_id TEXT")
             connection.execute(
@@ -80,15 +102,22 @@ class DailyRunStore:
                 "ON daily_runs(job_id)"
             )
 
-    def start_run(self, started_at: str, job_id: str | None = None) -> str:
+    def start_run(
+        self,
+        started_at: str,
+        job_id: str | None = None,
+        run_kind: str = "CLOSE",
+    ) -> str:
+        if run_kind not in {"SCAN", "CLOSE"}:
+            raise ValueError("run_kind must be SCAN or CLOSE")
         run_id = uuid4().hex
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO daily_runs(run_id, job_id, started_at, status)
-                VALUES (?, ?, ?, 'RUNNING')
+                INSERT INTO daily_runs(run_id, job_id, started_at, status, run_kind)
+                VALUES (?, ?, ?, 'RUNNING', ?)
                 """,
-                (run_id, job_id, started_at),
+                (run_id, job_id, started_at, run_kind),
             )
         return run_id
 
@@ -126,13 +155,31 @@ class DailyRunStore:
             return None
         return PortfolioSnapshot.model_validate_json(row["snapshot_json"])
 
+    def latest_close_snapshot(self) -> PortfolioSnapshot | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT snapshot_json
+                FROM portfolio_snapshots
+                WHERE run_kind = 'CLOSE'
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if row is None:
+            return None
+        return PortfolioSnapshot.model_validate_json(row["snapshot_json"])
+
     def save_snapshot(
         self,
         run_id: str,
         snapshot: PortfolioSnapshot,
         *,
         baseline_eligible: bool = True,
+        run_kind: str = "CLOSE",
     ) -> None:
+        if run_kind not in {"SCAN", "CLOSE"}:
+            raise ValueError("run_kind must be SCAN or CLOSE")
         payload = snapshot.model_dump_json()
         with self._lock, self._connect() as connection:
             connection.execute(
@@ -142,10 +189,12 @@ class DailyRunStore:
             if baseline_eligible:
                 connection.execute(
                     """
-                    INSERT INTO portfolio_snapshots(run_id, captured_at, snapshot_json)
-                    VALUES (?, ?, ?)
+                    INSERT INTO portfolio_snapshots(
+                        run_id, captured_at, run_kind, snapshot_json
+                    )
+                    VALUES (?, ?, ?, ?)
                     """,
-                    (run_id, snapshot.captured_at, payload),
+                    (run_id, snapshot.captured_at, run_kind, payload),
                 )
 
     def complete_run(
@@ -154,6 +203,7 @@ class DailyRunStore:
         completed_at: str,
         changes: dict[str, object],
         external_changes: dict[str, object],
+        gate: dict[str, object],
         monitoring: dict[str, object],
         opportunities: dict[str, object],
         cio: dict[str, object],
@@ -167,6 +217,7 @@ class DailyRunStore:
                     status = 'COMPLETED',
                     changes_json = ?,
                     external_changes_json = ?,
+                    gate_json = ?,
                     monitoring_json = ?,
                     opportunities_json = ?,
                     cio_json = ?,
@@ -178,6 +229,7 @@ class DailyRunStore:
                     completed_at,
                     json.dumps(changes, ensure_ascii=False),
                     json.dumps(external_changes, ensure_ascii=False),
+                    json.dumps(gate, ensure_ascii=False),
                     json.dumps(monitoring, ensure_ascii=False),
                     json.dumps(opportunities, ensure_ascii=False),
                     json.dumps(cio, ensure_ascii=False),
@@ -211,6 +263,7 @@ class DailyRunStore:
             "snapshot_json",
             "changes_json",
             "external_changes_json",
+            "gate_json",
             "monitoring_json",
             "opportunities_json",
             "cio_json",
@@ -224,8 +277,9 @@ class DailyRunStore:
         with self._lock, self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT run_id, started_at, completed_at, status,
-                       changes_json, external_changes_json, monitoring_json, opportunities_json,
+                SELECT run_id, started_at, completed_at, status, run_kind,
+                       changes_json, external_changes_json, gate_json,
+                       monitoring_json, opportunities_json,
                        cio_json, briefing, error
                 FROM daily_runs
                 ORDER BY started_at DESC
@@ -245,6 +299,7 @@ class DailyRunStore:
                 if row["external_changes_json"]
                 else None
             )
+            gate = json.loads(row["gate_json"]) if row["gate_json"] else None
             opportunities = (
                 json.loads(row["opportunities_json"])
                 if row["opportunities_json"]
@@ -259,6 +314,7 @@ class DailyRunStore:
                     "started_at": row["started_at"],
                     "completed_at": row["completed_at"],
                     "status": row["status"],
+                    "run_kind": row["run_kind"],
                     "material_change": cio.get("material_change") if cio else None,
                     "escalation": cio.get("escalation") if cio else None,
                     "ceo_action_required": (
@@ -271,6 +327,15 @@ class DailyRunStore:
                         external_changes.get("events_created", 0)
                         if external_changes
                         else 0
+                    ),
+                    "gate_decision": gate.get("decision") if gate else None,
+                    "ai_called": (
+                        bool(
+                            gate.get("ai_monitoring_required")
+                            or gate.get("ai_cio_required")
+                        )
+                        if gate
+                        else None
                     ),
                     "finding_count": (
                         len(monitoring.get("findings", [])) if monitoring else 0

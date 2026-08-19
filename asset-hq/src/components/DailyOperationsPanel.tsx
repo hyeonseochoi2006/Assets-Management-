@@ -95,8 +95,10 @@ export function DailyOperationsPanel() {
           <div>
             <span>시간표</span>
             <strong>
-              {schedule.daily_time && schedule.timezone
-                ? `${schedule.daily_time} · ${schedule.timezone}`
+              {schedule.schedule_times.length > 0 && schedule.timezone
+                ? `${schedule.schedule_times
+                    .map((slot) => `${slot.time} ${slot.run_kind === 'SCAN' ? '감지' : '마감'}`)
+                    .join(' · ')} · ${schedule.timezone}`
                 : '서버 설정 필요'}
             </strong>
           </div>
@@ -127,6 +129,10 @@ export function DailyOperationsPanel() {
               </strong>
             </div>
             <div className="daily-metric">
+              <span>실행 종류</span>
+              <strong>{latest.run_kind === 'SCAN' ? '저비용 감지' : '마감 점검'}</strong>
+            </div>
+            <div className="daily-metric">
               <span>CIO 에스컬레이션</span>
               <strong>{escalationLabel(latest)}</strong>
             </div>
@@ -141,6 +147,9 @@ export function DailyOperationsPanel() {
             <strong>{latest.summary ?? latest.error ?? '업무 결과를 정리하는 중입니다.'}</strong>
             <div className="daily-summary-meta">
               <span>포트폴리오 변화 {latest.change_count}</span>
+              <span>새 공식 공시 {latest.external_event_count}</span>
+              <span>AI 호출 {latest.ai_called ? '실행' : latest.ai_called === false ? '생략' : '확인 전'}</span>
+              {latest.gate_decision && <span>게이트 {latest.gate_decision}</span>}
               <span>중요 Finding {latest.finding_count}</span>
               <span>기회 후보 {latest.opportunity_count}</span>
               {latest.opportunity_tickers.length > 0 && (
@@ -161,6 +170,7 @@ export function DailyOperationsPanel() {
             <div className="daily-history-row" key={run.run_id}>
               <div>
                 <strong>{formatTime(run.completed_at ?? run.started_at)}</strong>
+                <span>{run.run_kind === 'SCAN' ? '저비용 감지' : '마감 점검'} · AI {run.ai_called ? '실행' : '생략'}</span>
                 <span>{run.summary ?? run.error ?? '처리 중'}</span>
                 {run.opportunity_count > 0 && (
                   <span>Research candidates: {run.opportunity_tickers.join(', ')}</span>

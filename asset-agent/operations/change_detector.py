@@ -23,6 +23,13 @@ _COMPARE_FIELDS = (
     "weight_pct",
 )
 
+_DAILY_REFERENCE_FIELDS = {"price", "position_value", "weight_pct"}
+_DAILY_REFERENCE_EVENT_TYPES = {
+    "PRICE_CHANGE",
+    "POSITION_VALUE_CHANGE",
+    "WEIGHT_CHANGE",
+}
+
 _FIELD_EVENT_TYPES = {
     "currency": "CURRENCY_CHANGE",
     "quantity": "QUANTITY_CHANGE",
@@ -527,3 +534,89 @@ def compare_portfolio_snapshots(
             summary="",
         )
     )
+
+
+def compare_portfolio_with_daily_reference(
+    previous: PortfolioSnapshot | None,
+    previous_close: PortfolioSnapshot | None,
+    current: PortfolioSnapshot,
+    policy: PortfolioChangePolicy | None = None,
+) -> ChangeSet:
+    """Use rolling identity/quantity checks and prior-close market movement.
+
+    Multiple intraday scans must not turn a gradual daily move into several
+    harmless-looking small intervals. Price, position value, and weight are
+    therefore measured from the most recent close when it exists. Holding and
+    quantity observations remain rolling so one intraday change is not treated
+    as newly discovered at every later scan.
+    """
+    selected_policy = policy or PortfolioChangePolicy.from_env()
+    rolling = compare_portfolio_snapshots(previous, current, selected_policy)
+    if (
+        previous_close is None
+        or previous is None
+        or previous_close.captured_at == previous.captured_at
+        or rolling.data_quality == "BLOCKED"
+    ):
+        return rolling
+
+    daily = compare_portfolio_snapshots(
+        previous_close,
+        current,
+        selected_policy,
+    )
+    if daily.data_quality == "BLOCKED":
+        return rolling
+
+    rolling.events = [
+        event
+        for event in rolling.events
+        if event.event_type not in _DAILY_REFERENCE_EVENT_TYPES
+    ]
+    rolling.events.extend(
+        event
+        for event in daily.events
+        if event.event_type in _DAILY_REFERENCE_EVENT_TYPES
+    )
+
+    merged_changes: list[PositionChange] = []
+    for change in rolling.changes:
+        if change.change_type == "UPDATED":
+            change.fields = [
+                field
+                for field in change.fields
+                if field.field not in _DAILY_REFERENCE_FIELDS
+            ]
+            if not change.fields:
+                continue
+        merged_changes.append(change)
+
+    daily_fields = {
+        change.symbol: [
+            field
+            for field in change.fields
+            if field.field in _DAILY_REFERENCE_FIELDS
+        ]
+        for change in daily.changes
+        if change.change_type == "UPDATED"
+    }
+    for symbol, fields in daily_fields.items():
+        if not fields:
+            continue
+        existing = next(
+            (
+                change
+                for change in merged_changes
+                if change.symbol == symbol and change.change_type == "UPDATED"
+            ),
+            None,
+        )
+        if existing is None:
+            merged_changes.append(
+                PositionChange(symbol=symbol, change_type="UPDATED", fields=fields)
+            )
+        else:
+            existing.fields.extend(fields)
+
+    rolling.changes = merged_changes
+    return refresh_change_set(rolling)

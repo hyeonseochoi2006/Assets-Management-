@@ -4,6 +4,13 @@
   "postCreateCommand": "python -m pip install -r asset-agent/requirements-dev.txt && npm --prefix asset-hq install",
   "postStartCommand": "bash .devcontainer/start-ceo.sh",
   "postAttachCommand": "bash .devcontainer/start-ceo.sh",
+  "containerEnv": {
+    "ASSET_DAILY_SCHEDULE_ENABLED": "true",
+    "ASSET_DAILY_SCAN_TIMES": "08:30,12:30",
+    "ASSET_DAILY_TIME": "17:30",
+    "ASSET_TIMEZONE": "America/New_York",
+    "ASSET_DAILY_MISFIRE_GRACE_MINUTES": "120"
+  },
   "forwardPorts": [5173, 8000],
   "portsAttributes": {
     "5173": {
@@ -17,6 +24,9 @@
   "secrets": {
     "ASSET_API_TOKEN": {
       "description": "Required 32+ character Bearer token for private CEO access to Asset Management HQ."
+    },
+    "ASSET_SEC_USER_AGENT": {
+      "description": "SEC request identity, for example: Asset Agent your-email@example.com"
     }
   }
 }

@@ -1,15 +1,20 @@
 from collections.abc import Callable
 from datetime import datetime, timezone
+from typing import Literal
 
 from data.portfolio_monitor import get_live_portfolio_snapshots
 from departments.monitoring import run_daily_monitoring
-from departments.opportunity import run_opportunity_scout
 from executive.daily_cio import run_daily_cio_decision
 from operations.approval_store import APPROVAL_STORE
-from operations.change_detector import compare_portfolio_snapshots
+from operations.analysis_gate import evaluate_daily_analysis_gate
+from operations.change_detector import compare_portfolio_with_daily_reference
 from operations.change_event_store import CHANGE_EVENT_STORE
 from operations.external_changes import run_external_change_detection
-from operations.models import OpportunityScoutReport
+from operations.models import (
+    DailyCioDecision,
+    MonitoringReport,
+    OpportunityScoutReport,
+)
 from operations.run_store import RUN_STORE
 from reporting.briefing import run_korean_ceo_brief
 
@@ -34,13 +39,15 @@ def _emit(
 def run_daily_operations(
     status_callback: DailyStatusCallback | None = None,
     job_id: str | None = None,
+    run_kind: Literal["SCAN", "CLOSE"] = "CLOSE",
 ) -> dict[str, object]:
     """Run one read-only Daily Operations cycle and persist the result."""
     started_at = _now_iso()
-    run_id = RUN_STORE.start_run(started_at, job_id=job_id)
+    run_id = RUN_STORE.start_run(started_at, job_id=job_id, run_kind=run_kind)
 
     try:
         previous_snapshot = RUN_STORE.latest_snapshot()
+        previous_close_snapshot = RUN_STORE.latest_close_snapshot()
 
         _emit(
             status_callback,
@@ -49,7 +56,11 @@ def run_daily_operations(
             "Daily Operations · Toss 포트폴리오 + 종목식별 Snapshot",
         )
         readable_snapshot, current_snapshot = get_live_portfolio_snapshots()
-        changes = compare_portfolio_snapshots(previous_snapshot, current_snapshot)
+        changes = compare_portfolio_with_daily_reference(
+            previous_snapshot,
+            previous_close_snapshot if run_kind == "CLOSE" else None,
+            current_snapshot,
+        )
 
         _emit(
             status_callback,
@@ -66,6 +77,7 @@ def run_daily_operations(
             changes,
             additional_events=external_events,
         )
+        gate = evaluate_daily_analysis_gate(changes, current_snapshot, run_kind)
         _emit(
             status_callback,
             "Analysis",
@@ -76,6 +88,7 @@ def run_daily_operations(
             run_id,
             current_snapshot,
             baseline_eligible=changes.data_quality != "BLOCKED",
+            run_kind=run_kind,
         )
         _emit(
             status_callback,
@@ -84,63 +97,98 @@ def run_daily_operations(
             "Daily Operations · Toss 포트폴리오 + 종목식별 Snapshot",
         )
 
-        _emit(
-            status_callback,
-            "Analysis",
-            "WORKING",
-            "Daily Operations · 보유종목 중요 변화 모니터링",
-        )
-        monitoring = run_daily_monitoring(
-            current_snapshot.positions,
-            previous_snapshot.captured_at if previous_snapshot else None,
-        )
-        _emit(
-            status_callback,
-            "Analysis",
-            "DONE",
-            "Daily Operations · 보유종목 중요 변화 모니터링",
-        )
-
-        scout_task = "Daily Operations · 신규 투자기회 저비용 탐색"
-        _emit(status_callback, "Analysis", "WORKING", scout_task)
-        try:
-            opportunities = run_opportunity_scout(current_snapshot)
-            _emit(status_callback, "Analysis", "DONE", scout_task)
-        except Exception as scout_exc:
-            opportunities = OpportunityScoutReport(
-                candidates=[],
-                data_quality="LOW",
-                scan_scope="ROUTINE OPPORTUNITY SCOUT UNAVAILABLE",
+        if gate.ai_monitoring_required:
+            _emit(
+                status_callback,
+                "Analysis",
+                "WORKING",
+                "Daily Operations · 변화 종목만 AI 모니터링",
+            )
+            targeted_positions = [
+                position
+                for position in current_snapshot.positions
+                if position.symbol.strip().upper() in gate.targeted_symbols
+            ]
+            monitoring = run_daily_monitoring(
+                targeted_positions,
+                previous_snapshot.captured_at if previous_snapshot else None,
+            )
+            _emit(
+                status_callback,
+                "Analysis",
+                "DONE",
+                "Daily Operations · 변화 종목만 AI 모니터링",
+            )
+        else:
+            monitoring = MonitoringReport(
+                findings=[],
+                data_quality=(
+                    "LOW" if changes.data_quality == "BLOCKED" else "HIGH"
+                ),
                 notes=[
-                    "Opportunity Scout failed independently; portfolio monitoring and CIO review continued.",
-                    f"Error type: {type(scout_exc).__name__}",
+                    "AI monitoring skipped by deterministic daily-analysis gate.",
+                    *gate.reasons,
                 ],
             )
             _emit(
                 status_callback,
                 "Analysis",
-                "ERROR",
-                "Daily Operations · Opportunity Scout 오류 기록",
+                "DONE",
+                "Daily Operations · 중요 변화 없음, AI 호출 생략",
             )
 
-        _emit(
-            status_callback,
-            "CIO",
-            "WORKING",
-            "Daily Operations · 위험/기회 CEO 에스컬레이션 판단",
+        opportunities = OpportunityScoutReport(
+            candidates=[],
+            data_quality="HIGH",
+            scan_scope="SKIPPED BY ROUTINE DAILY ANALYSIS GATE",
+            notes=[
+                "Opportunity Scout is separated from routine scans to avoid "
+                "unrelated daily AI cost."
+            ],
         )
-        cio_decision = run_daily_cio_decision(
-            current_snapshot,
-            changes,
-            monitoring,
-            opportunities,
-        )
-        _emit(
-            status_callback,
-            "CIO",
-            "DONE",
-            "Daily Operations · 위험/기회 CEO 에스컬레이션 판단",
-        )
+
+        if gate.ai_cio_required:
+            _emit(
+                status_callback,
+                "CIO",
+                "WORKING",
+                "Daily Operations · 중요 변화 CIO 검토",
+            )
+            cio_decision = run_daily_cio_decision(
+                current_snapshot,
+                changes,
+                monitoring,
+                opportunities,
+            )
+            _emit(
+                status_callback,
+                "CIO",
+                "DONE",
+                "Daily Operations · 중요 변화 CIO 검토",
+            )
+        else:
+            conclusion = (
+                "Final close check completed with no event requiring AI review."
+                if run_kind == "CLOSE"
+                else "Low-cost change scan completed with no event requiring AI review."
+            )
+            cio_decision = DailyCioDecision(
+                material_change=False,
+                escalation="NONE",
+                ceo_action_required=False,
+                affected_tickers=[],
+                summary=conclusion,
+                reasons=gate.reasons,
+                recommended_next_step=(
+                    "Store the observations and wait for the next scheduled scan."
+                ),
+            )
+            _emit(
+                status_callback,
+                "CIO",
+                "DONE",
+                "Daily Operations · AI 검토 불필요",
+            )
 
         should_brief_ceo = (
             cio_decision.material_change
@@ -162,6 +210,7 @@ def run_daily_operations(
                     "DETERMINISTIC PORTFOLIO CHANGES:\n" + changes.model_dump_json(indent=2),
                     "OFFICIAL EXTERNAL CHANGES:\n"
                     + external_changes.model_dump_json(indent=2),
+                    "DAILY ANALYSIS GATE:\n" + gate.model_dump_json(indent=2),
                     "DAILY MONITORING:\n" + monitoring.model_dump_json(indent=2),
                     "OPPORTUNITY SCOUT:\n" + opportunities.model_dump_json(indent=2),
                 ]
@@ -201,6 +250,7 @@ def run_daily_operations(
             completed_at=completed_at,
             changes=changes.model_dump(),
             external_changes=external_changes.model_dump(),
+            gate=gate.model_dump(),
             monitoring=monitoring.model_dump(),
             opportunities=opportunities.model_dump(),
             cio=cio_decision.model_dump(),
@@ -212,8 +262,10 @@ def run_daily_operations(
             "status": "COMPLETED",
             "started_at": started_at,
             "completed_at": completed_at,
+            "run_kind": run_kind,
             "changes": changes.model_dump(),
             "external_changes": external_changes.model_dump(),
+            "gate": gate.model_dump(),
             "monitoring": monitoring.model_dump(),
             "opportunities": opportunities.model_dump(),
             "cio": cio_decision.model_dump(),

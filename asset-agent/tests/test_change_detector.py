@@ -1,6 +1,9 @@
 import pytest
 
-from operations.change_detector import compare_portfolio_snapshots
+from operations.change_detector import (
+    compare_portfolio_snapshots,
+    compare_portfolio_with_daily_reference,
+)
 from operations.change_policy import POLICY_ENV_NAMES, PortfolioChangePolicy
 from operations.models import PortfolioSnapshot, PositionSnapshot
 
@@ -184,6 +187,49 @@ def test_environment_can_override_defaults(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
     assert result.events[0].severity == "MATERIAL"
+
+
+def test_daily_reference_catches_gradual_cumulative_material_move() -> None:
+    previous_close = snapshot("2026-08-17T21:30:00+00:00", price=100)
+    previous_scan = snapshot("2026-08-18T16:30:00+00:00", price=106)
+    current = snapshot("2026-08-18T21:30:00+00:00", price=107.1)
+
+    rolling_only = compare_portfolio_snapshots(previous_scan, current)
+    with_daily_reference = compare_portfolio_with_daily_reference(
+        previous_scan,
+        previous_close,
+        current,
+    )
+
+    rolling_price = next(
+        event for event in rolling_only.events if event.event_type == "PRICE_CHANGE"
+    )
+    daily_price = next(
+        event
+        for event in with_daily_reference.events
+        if event.event_type == "PRICE_CHANGE"
+    )
+    assert rolling_price.severity == "QUIET"
+    assert daily_price.severity == "MATERIAL"
+    assert daily_price.previous == 100
+    assert daily_price.current == 107.1
+
+
+def test_daily_reference_does_not_repeat_intraday_holding_addition() -> None:
+    previous_close = snapshot(
+        "2026-08-17T21:30:00+00:00", symbol="GOOGL"
+    )
+    previous_scan = snapshot("2026-08-18T12:30:00+00:00", symbol="AAPL")
+    current = snapshot("2026-08-18T16:30:00+00:00", symbol="AAPL")
+
+    result = compare_portfolio_with_daily_reference(
+        previous_scan,
+        previous_close,
+        current,
+    )
+
+    assert result.events == []
+    assert result.changes == []
 
 
 def test_invalid_threshold_order_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

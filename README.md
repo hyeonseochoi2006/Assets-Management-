@@ -17,6 +17,13 @@ Codespaces Secret named `ASSET_API_TOKEN`, grant this repository access, and
 restart the codespace. Never commit the token to this repository or place it in
 a `VITE_` environment variable.
 
+For official SEC filing checks, also add a Codespaces Secret named
+`ASSET_SEC_USER_AGENT` with an identifying value such as
+`Asset Agent your-email@example.com`. The dev container enables the New York
+schedule automatically: low-cost scans at 08:30 and 12:30, followed by the
+17:30 close check. Rebuild the container after changing Codespaces Secrets or
+the dev-container schedule.
+
 Keep forwarded ports `5173` and `8000` set to **Private** in the Codespaces
 Ports panel. The application still requires its own Bearer token if a port is
 accidentally exposed.

@@ -78,12 +78,16 @@ export interface DailyRunSummary {
   started_at: string
   completed_at: string | null
   status: JobStatus
+  run_kind: 'SCAN' | 'CLOSE'
   material_change: boolean | null
   escalation: DailyEscalation | null
   ceo_action_required: boolean | null
   summary: string | null
   affected_tickers: string[]
   change_count: number
+  external_event_count: number
+  gate_decision: 'SKIP_AI' | 'TARGETED_REVIEW' | 'CIO_REVIEW' | null
+  ai_called: boolean | null
   finding_count: number
   opportunity_count: number
   opportunity_tickers: string[]
@@ -111,6 +115,11 @@ export interface DailyScheduleEvent {
 export interface DailyScheduleResponse {
   enabled: boolean
   daily_time: string | null
+  scan_times: string[]
+  schedule_times: Array<{
+    run_kind: 'SCAN' | 'CLOSE'
+    time: string | null
+  }>
   timezone: string | null
   misfire_grace_minutes: number
   next_run_at: string | null

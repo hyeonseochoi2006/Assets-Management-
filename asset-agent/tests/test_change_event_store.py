@@ -8,7 +8,6 @@ from operations.change_event_store import ChangeEventStore
 from operations.models import (
     DailyCioDecision,
     MonitoringReport,
-    OpportunityScoutReport,
     PortfolioSnapshot,
     PositionSnapshot,
 )
@@ -172,16 +171,6 @@ def test_daily_operations_persists_grouped_change_events(
         daily_runner_module,
         "run_daily_monitoring",
         lambda *_: MonitoringReport(findings=[], data_quality="HIGH", notes=[]),
-    )
-    monkeypatch.setattr(
-        daily_runner_module,
-        "run_opportunity_scout",
-        lambda *_: OpportunityScoutReport(
-            candidates=[],
-            data_quality="HIGH",
-            scan_scope="test",
-            notes=[],
-        ),
     )
     monkeypatch.setattr(
         daily_runner_module,

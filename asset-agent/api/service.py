@@ -3,6 +3,7 @@ import socket
 from collections.abc import Callable
 from datetime import datetime, timezone
 from threading import Event, Lock, Thread
+from typing import Literal
 from uuid import uuid4
 
 from ceo_desk.command_router import CEOAction, CEOCommand, route_command
@@ -181,7 +182,10 @@ def _run_job(job_id: str, command: CEOCommand) -> None:
         heartbeat_thread.join(timeout=1)
 
 
-def _run_daily_system_job(job_id: str) -> None:
+def _run_daily_system_job(
+    job_id: str,
+    run_kind: Literal["SCAN", "CLOSE"] = "CLOSE",
+) -> None:
     heartbeat_stop = Event()
     heartbeat_thread = Thread(
         target=_heartbeat_job,
@@ -195,7 +199,11 @@ def _run_daily_system_job(job_id: str) -> None:
         def status_callback(agent: str, status: str, task: str | None) -> None:
             JOB_STORE.update_agent(job_id, agent, status, task)
 
-        result = run_daily_operations(status_callback=status_callback, job_id=job_id)
+        result = run_daily_operations(
+            status_callback=status_callback,
+            job_id=job_id,
+            run_kind=run_kind,
+        )
         briefing = result.get("briefing")
 
         if isinstance(briefing, str) and briefing.strip():
@@ -208,7 +216,7 @@ def _run_daily_system_job(job_id: str) -> None:
                 if isinstance(summary, str) and summary.strip():
                     cio_summary = summary
             output = (
-                "=== DAILY OPERATIONS COMPLETE ===\n"
+                f"=== DAILY {run_kind} COMPLETE ===\n"
                 f"{cio_summary}\n"
                 "CEO 행동 필요 없음.\n"
                 f"Run ID: {result['run_id']}"
@@ -286,8 +294,11 @@ def start_daily_operations(
     schedule_key: str | None = None,
     scheduled_for: str | None = None,
     schedule_timezone: str | None = None,
+    run_kind: Literal["SCAN", "CLOSE"] = "CLOSE",
 ) -> dict[str, object]:
-    """Start one manually-triggered SYSTEM Daily Operations cycle."""
+    """Start one manual close check or scheduled low-cost scan."""
+    if run_kind not in {"SCAN", "CLOSE"}:
+        raise ValueError("run_kind must be SCAN or CLOSE")
     schedule_values = (schedule_key, scheduled_for, schedule_timezone)
     if any(value is not None for value in schedule_values) and not all(
         value is not None for value in schedule_values
@@ -302,8 +313,12 @@ def start_daily_operations(
 
         try:
             job = JOB_STORE.create_job(
-                command="AUTO DAILY OPERATIONS",
-                action="DAILY_OPERATIONS",
+                command=(
+                    "AUTO DAILY CHANGE SCAN"
+                    if run_kind == "SCAN"
+                    else "AUTO DAILY CLOSE"
+                ),
+                action=("DAILY_SCAN" if run_kind == "SCAN" else "DAILY_OPERATIONS"),
                 ticker=None,
                 source="SYSTEM",
                 retry_of=retry_of,
@@ -322,7 +337,7 @@ def start_daily_operations(
         _start_thread(
             job,
             _run_daily_system_job,
-            (str(job["job_id"]),),
+            (str(job["job_id"]), run_kind),
             f"asset-daily-{job['job_id']}",
         )
 
@@ -344,6 +359,9 @@ def retry_job(job_id: str) -> dict[str, object]:
         raise RetryJobError("job not found")
     if original["status"] not in {"FAILED", "INTERRUPTED"}:
         raise RetryJobError("only FAILED or INTERRUPTED jobs can be retried")
-    if original["action"] == "DAILY_OPERATIONS":
-        return start_daily_operations(retry_of=job_id)
+    if original["action"] in {"DAILY_OPERATIONS", "DAILY_SCAN"}:
+        return start_daily_operations(
+            retry_of=job_id,
+            run_kind=("SCAN" if original["action"] == "DAILY_SCAN" else "CLOSE"),
+        )
     return start_job(str(original["command"]), retry_of=job_id)

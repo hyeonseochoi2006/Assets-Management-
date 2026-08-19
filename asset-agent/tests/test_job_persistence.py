@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from api.job_store import ActiveJobExistsError, JobStore
+from operations.models import PortfolioSnapshot
 from operations.run_store import DailyRunStore
 
 
@@ -164,3 +165,27 @@ def test_interrupted_job_marks_linked_daily_run(tmp_path: Path) -> None:
     assert latest["run_id"] == run_id
     assert latest["status"] == "INTERRUPTED"
     assert "Server stopped" in str(latest["error"])
+
+
+def test_latest_close_snapshot_ignores_newer_intraday_scan(tmp_path: Path) -> None:
+    store = DailyRunStore(tmp_path / "operations.db")
+    close = PortfolioSnapshot(
+        captured_at="2026-08-17T21:30:00+00:00",
+        account_seq="test-account",
+        positions=[],
+    )
+    scan = close.model_copy(
+        update={"captured_at": "2026-08-18T12:30:00+00:00"}
+    )
+    close_run = store.start_run(close.captured_at, run_kind="CLOSE")
+    scan_run = store.start_run(scan.captured_at, run_kind="SCAN")
+    store.save_snapshot(close_run, close, run_kind="CLOSE")
+    store.save_snapshot(scan_run, scan, run_kind="SCAN")
+
+    latest = store.latest_snapshot()
+    latest_close = store.latest_close_snapshot()
+
+    assert latest is not None
+    assert latest.captured_at == scan.captured_at
+    assert latest_close is not None
+    assert latest_close.captured_at == close.captured_at
