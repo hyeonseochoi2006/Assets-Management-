@@ -115,24 +115,25 @@ def test_worker_heartbeat_persists_scheduler_snapshot(tmp_path: Path) -> None:
     }
 
 
-def test_asset_worker_owns_scheduler_and_releases_lease(tmp_path: Path) -> None:
+def test_asset_worker_recovers_resumes_then_starts_scheduler(tmp_path: Path) -> None:
     store = WorkerRuntimeStore(tmp_path / "operations.db", lease_seconds=60)
     scheduler = FakeScheduler()
-    recover_calls: list[str] = []
+    calls: list[str] = []
     stop = Event()
     stop.set()
 
     worker = AssetWorker(
         store=store,
         scheduler=scheduler,  # type: ignore[arg-type]
-        recover_fn=lambda: recover_calls.append("recover") or [],
+        recover_fn=lambda: calls.append("recover") or [],
+        resume_fn=lambda: calls.append("resume") or [],
         heartbeat_seconds=5,
     )
     worker.run(stop)
 
     assert scheduler.started is True
     assert scheduler.stopped is True
-    assert recover_calls == ["recover"]
+    assert calls == ["recover", "resume"]
 
     status = store.status()
     assert status is not None
