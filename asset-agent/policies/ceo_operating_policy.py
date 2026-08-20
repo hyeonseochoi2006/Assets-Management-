@@ -1,8 +1,232 @@
 """CEO operating policy for the autonomous asset-management company.
 
-This file defines company-level objectives, reporting cadence, escalation rules,
-and routine responsibilities. It does not authorize brokerage order execution.
+This module has two layers:
+1. Machine-readable operating rules used by automation and tests.
+2. Human-readable policy text used as context for agents and CEO reports.
+
+The operating policy controls how the company works. Numeric portfolio limits,
+security eligibility, and other investment-risk choices belong in the separate
+investment policy and must never be invented here.
 """
+
+from dataclasses import dataclass
+from enum import Enum
+
+
+class EscalationLevel(str, Enum):
+    GREEN = "GREEN"
+    WATCH = "WATCH"
+    ALERT = "ALERT"
+    CRITICAL = "CRITICAL"
+
+
+class WorkflowDirective(str, Enum):
+    CONTINUE = "CONTINUE"
+    RECORD_ONLY = "RECORD_ONLY"
+    COMPLETE_SILENTLY = "COMPLETE_SILENTLY"
+    WAITING_FOR_CEO = "WAITING_FOR_CEO"
+    PAUSE_AND_NOTIFY = "PAUSE_AND_NOTIFY"
+
+
+@dataclass(frozen=True)
+class PolicyRule:
+    code: str
+    statement: str
+
+
+@dataclass(frozen=True)
+class EscalationRule:
+    code: str
+    trigger: str
+    level: EscalationLevel
+    notify_ceo: bool
+    workflow_directive: WorkflowDirective
+
+
+# ---------------------------------------------------------------------------
+# MACHINE-READABLE AUTONOMOUS COMPANY CONSTITUTION
+# ---------------------------------------------------------------------------
+
+HARD_RULES: tuple[PolicyRule, ...] = (
+    PolicyRule("HR-001", "The CEO retains final authority for investment and policy decisions."),
+    PolicyRule("HR-002", "Normal recurring operations must run without requiring routine CEO commands."),
+    PolicyRule("HR-003", "Only material risks, strong opportunities, approval requests, policy conflicts, and critical system failures should interrupt the CEO."),
+    PolicyRule("HR-004", "NO DATA = NO DECISION. Missing, stale, unresolved, or materially conflicting data must not be silently substituted or guessed."),
+    PolicyRule("HR-005", "Use deterministic code and explicit rules for calculations and threshold checks before using AI for interpretation."),
+    PolicyRule("HR-006", "Risk and data/audit controls must remain independent from the investment thesis they review, and dissent must be preserved."),
+    PolicyRule("HR-007", "The system is decision support only and must never place, modify, or cancel a real brokerage order."),
+    PolicyRule("HR-008", "Policy precedence is HARD SAFETY > CEO INVESTMENT POLICY > DATA QUALITY > RISK CONTROLS > CIO JUDGMENT > AGENT RECOMMENDATION."),
+    PolicyRule("HR-009", "A lower-precedence agent or workflow may not override a higher-precedence blocker without an explicit CEO policy exception where permitted."),
+    PolicyRule("HR-010", "Every material automated action must be auditable with run identity, time, inputs, sources, decision path, AI usage, approval state, and outcome."),
+)
+
+
+AUTONOMOUS_ACTIONS: tuple[PolicyRule, ...] = (
+    PolicyRule("AA-001", "Read brokerage and approved external data sources in read-only mode."),
+    PolicyRule("AA-002", "Create and validate portfolio snapshots, holdings changes, prices, quantities, values, weights, and available brokerage cash when supported by real data."),
+    PolicyRule("AA-003", "Run deterministic calculations, change detection, data-quality checks, instrument identity checks, market-calendar checks, and configured risk metrics."),
+    PolicyRule("AA-004", "Collect and record official filings and other configured external events with source and timestamp context."),
+    PolicyRule("AA-005", "Run low-cost monitoring, filtering, deduplication, health checks, logging, and routine reporting without CEO approval."),
+    PolicyRule("AA-006", "Run ordinary AI analysis only when the analysis gate permits it, required data quality is acceptable, and the call is within configured AI-cost policy."),
+    PolicyRule("AA-007", "Complete routine workflows silently when there is no material change and no CEO decision is required."),
+    PolicyRule("AA-008", "Persist run, job, change-event, approval, workflow-state, and system-health records needed for recovery and audit."),
+    PolicyRule("AA-009", "Resume recoverable interrupted work from persisted state when doing so is safe and idempotent."),
+    PolicyRule("AA-010", "Run configured daily, weekly, and monthly monitoring or review workflows automatically when their schedules and prerequisites are satisfied."),
+)
+
+
+CEO_APPROVAL_REQUIRED: tuple[PolicyRule, ...] = (
+    PolicyRule("CA-001", "Any actual investment decision that would result in a real buy, sell, rebalance, or other brokerage action requires the CEO; the software still does not execute the order."),
+    PolicyRule("CA-002", "Any creation, removal, or material change of company operating policy or CEO investment policy requires the CEO."),
+    PolicyRule("CA-003", "High-cost or materially expanded AI research beyond the configured routine budget requires CEO approval unless a future explicit budget policy pre-authorizes it."),
+    PolicyRule("CA-004", "Any permitted override of a risk blocker or policy exception requires an explicit CEO decision and an immutable audit record."),
+    PolicyRule("CA-005", "Treating an instrument, asset class, leverage structure, or market as investable when eligibility is NOT CONFIGURED requires CEO policy configuration first."),
+    PolicyRule("CA-006", "Adding an external integration with write, trading, money-movement, or other consequential permissions requires explicit CEO approval."),
+    PolicyRule("CA-007", "When a material recommendation cannot be resolved within configured policy and evidence, the workflow must wait for the CEO instead of inventing a decision."),
+)
+
+
+PROHIBITED_ACTIONS: tuple[PolicyRule, ...] = (
+    PolicyRule("PA-001", "Never place, modify, cancel, or simulate the placement of a real brokerage order through a connected brokerage account."),
+    PolicyRule("PA-002", "Never invent missing numbers, facts, holdings, sources, risk limits, investment limits, policies, or verification status."),
+    PolicyRule("PA-003", "Never silently change operating policy, investment policy, approval requirements, or risk controls."),
+    PolicyRule("PA-004", "Never treat locked assets or expected future assets as current investable buying power."),
+    PolicyRule("PA-005", "Never increase leverage, concentration, trading frequency, or permitted risk merely because a performance target is behind schedule."),
+    PolicyRule("PA-006", "Never use social-media or community evidence as the sole basis for a material investment decision."),
+    PolicyRule("PA-007", "Never bypass a blocking data-quality, unresolved-instrument, safety, or risk control by substituting an AI guess."),
+    PolicyRule("PA-008", "Never retry indefinitely. Retry only eligible transient failures with bounded attempts and backoff, then fail safely."),
+    PolicyRule("PA-009", "Never execute the same scheduled job more than once for the same idempotency key or schedule occurrence."),
+    PolicyRule("PA-010", "Never present stale data as current without its age/status being explicit and acceptable to the consuming rule."),
+    PolicyRule("PA-011", "Never suppress or rewrite a material dissenting Risk, Audit, or Data Quality conclusion merely to make the final recommendation more decisive."),
+)
+
+
+ESCALATION_RULES: tuple[EscalationRule, ...] = (
+    EscalationRule(
+        "ER-001",
+        "No material change and no CEO action required",
+        EscalationLevel.GREEN,
+        False,
+        WorkflowDirective.COMPLETE_SILENTLY,
+    ),
+    EscalationRule(
+        "ER-002",
+        "Routine watch event or non-material change worth preserving internally",
+        EscalationLevel.WATCH,
+        False,
+        WorkflowDirective.RECORD_ONLY,
+    ),
+    EscalationRule(
+        "ER-003",
+        "Material risk that survives validation and requires CEO awareness but not an immediate policy decision",
+        EscalationLevel.ALERT,
+        True,
+        WorkflowDirective.CONTINUE,
+    ),
+    EscalationRule(
+        "ER-004",
+        "Strong opportunity that survives internal screening and CIO review",
+        EscalationLevel.ALERT,
+        True,
+        WorkflowDirective.WAITING_FOR_CEO,
+    ),
+    EscalationRule(
+        "ER-005",
+        "High-cost deep analysis or material expansion of AI work requires approval",
+        EscalationLevel.ALERT,
+        True,
+        WorkflowDirective.WAITING_FOR_CEO,
+    ),
+    EscalationRule(
+        "ER-006",
+        "Actual investment or policy decision is required",
+        EscalationLevel.ALERT,
+        True,
+        WorkflowDirective.WAITING_FOR_CEO,
+    ),
+    EscalationRule(
+        "ER-007",
+        "Blocking data-quality failure, unresolved instrument identity, or material source conflict prevents a safe decision",
+        EscalationLevel.CRITICAL,
+        True,
+        WorkflowDirective.PAUSE_AND_NOTIFY,
+    ),
+    EscalationRule(
+        "ER-008",
+        "Policy conflict, prohibited-action attempt, or safety-control violation is detected",
+        EscalationLevel.CRITICAL,
+        True,
+        WorkflowDirective.PAUSE_AND_NOTIFY,
+    ),
+    EscalationRule(
+        "ER-009",
+        "Critical system failure prevents trustworthy operation after bounded recovery attempts",
+        EscalationLevel.CRITICAL,
+        True,
+        WorkflowDirective.PAUSE_AND_NOTIFY,
+    ),
+)
+
+
+def _rule_to_dict(rule: PolicyRule) -> dict[str, str]:
+    return {"code": rule.code, "statement": rule.statement}
+
+
+def _escalation_to_dict(rule: EscalationRule) -> dict[str, str | bool]:
+    return {
+        "code": rule.code,
+        "trigger": rule.trigger,
+        "level": rule.level.value,
+        "notify_ceo": rule.notify_ceo,
+        "workflow_directive": rule.workflow_directive.value,
+    }
+
+
+def get_machine_operating_policy() -> dict[str, object]:
+    """Return the company constitution in a JSON-safe, machine-readable shape."""
+    return {
+        "version": "2.0",
+        "hard_rules": [_rule_to_dict(rule) for rule in HARD_RULES],
+        "autonomous_actions": [_rule_to_dict(rule) for rule in AUTONOMOUS_ACTIONS],
+        "ceo_approval_required": [_rule_to_dict(rule) for rule in CEO_APPROVAL_REQUIRED],
+        "prohibited_actions": [_rule_to_dict(rule) for rule in PROHIBITED_ACTIONS],
+        "escalation_rules": [_escalation_to_dict(rule) for rule in ESCALATION_RULES],
+    }
+
+
+def _render_rule_group(title: str, rules: tuple[PolicyRule, ...]) -> str:
+    lines = [title]
+    lines.extend(f"- {rule.code}: {rule.statement}" for rule in rules)
+    return "\n".join(lines)
+
+
+def _render_escalation_rules() -> str:
+    lines = ["ESCALATION RULES"]
+    for rule in ESCALATION_RULES:
+        lines.append(
+            f"- {rule.code}: level={rule.level.value}; notify_ceo={str(rule.notify_ceo).upper()}; "
+            f"directive={rule.workflow_directive.value}; trigger={rule.trigger}"
+        )
+    return "\n".join(lines)
+
+
+def render_machine_operating_policy() -> str:
+    """Render the structured constitution for inclusion in agent context."""
+    return "\n\n".join(
+        [
+            "AUTONOMOUS COMPANY CONSTITUTION v2.0",
+            _render_rule_group("HARD RULES", HARD_RULES),
+            _render_rule_group("AUTONOMOUS ACTIONS", AUTONOMOUS_ACTIONS),
+            _render_rule_group("CEO APPROVAL REQUIRED", CEO_APPROVAL_REQUIRED),
+            _render_rule_group("PROHIBITED ACTIONS", PROHIBITED_ACTIONS),
+            _render_escalation_rules(),
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# HUMAN-READABLE POLICY CONTEXT
+# ---------------------------------------------------------------------------
 
 CEO_OPERATING_POLICY = """
 CEO OPERATING POLICY v1
@@ -151,6 +375,7 @@ POST-MORTEM
 def get_full_operating_policy() -> str:
     return "\n\n".join(
         [
+            render_machine_operating_policy().strip(),
             CEO_OPERATING_POLICY.strip(),
             DAILY_AGENT_TASKS.strip(),
             PERIODIC_REVIEW_POLICY.strip(),
