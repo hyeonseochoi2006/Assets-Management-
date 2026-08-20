@@ -111,3 +111,29 @@ def test_completed_daily_run_repairs_outer_interrupted_job_without_rerun(
     event = schedules.get("DAILY_SCAN:2026-08-20:08:30")
     assert event is not None
     assert event["status"] == "COMPLETED"
+
+
+def test_manual_daily_validation_job_is_not_auto_resume_candidate(tmp_path: Path) -> None:
+    db_path = tmp_path / "operations.db"
+    jobs = JobStore(db_path, lease_seconds=30)
+    runs = DailyRunStore(db_path)
+    job = jobs.create_job(
+        command="MANUAL DAILY VALIDATION",
+        action="DAILY_OPERATIONS",
+        ticker=None,
+        source="SYSTEM",
+        schedule_key=None,
+    )
+    job_id = str(job["job_id"])
+    jobs.mark_running(job_id, "old-worker")
+    runs.start_run(
+        "2026-08-20T12:30:00+00:00",
+        job_id=job_id,
+        run_kind="CLOSE",
+    )
+    future = datetime.now(timezone.utc) + timedelta(seconds=31)
+    recovered = jobs.recover_stale_jobs(now=future)
+    runs.interrupt_jobs(recovered, future.isoformat())
+
+    recovery = DailyRecoveryStore(db_path)
+    assert recovery.recoverable_jobs() == []
