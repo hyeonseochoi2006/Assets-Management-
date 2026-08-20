@@ -87,6 +87,7 @@ def run_external_change_detection(
     *,
     db_path: Path | None = None,
     client: SecEdgarClient | None = None,
+    run_id: str | None = None,
 ) -> tuple[ExternalChangeReport, list[ChangeEvent]]:
     checked_at = _now_or_snapshot(snapshot)
     source_checks: list[ExternalSourceCheck] = []
@@ -145,6 +146,7 @@ def run_external_change_detection(
                     subject_key=cik,
                     checked_at=checked_at,
                     documents=documents,
+                    run_id=run_id,
                 )
                 new_documents.extend(unseen)
                 source_checks.append(
