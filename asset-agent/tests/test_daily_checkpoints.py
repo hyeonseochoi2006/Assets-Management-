@@ -6,20 +6,19 @@ from operations.checkpoint_store import DailyCheckpointStore
 def test_checkpoint_survives_store_restart(tmp_path: Path) -> None:
     db_path = tmp_path / "operations.db"
     first = DailyCheckpointStore(db_path)
-    first.begin("run-1", "DATA_READY")
+    first.begin("run-1", "SNAPSHOT_READY")
     first.complete(
         "run-1",
-        "DATA_READY",
-        {"snapshot": {"account_seq": "abc"}, "gate": {"decision": "SKIP_AI"}},
+        "SNAPSHOT_READY",
+        {"snapshot": {"account_seq": "abc"}},
     )
 
     reopened = DailyCheckpointStore(db_path)
-    payload = reopened.completed_payload("run-1", "DATA_READY")
+    payload = reopened.completed_payload("run-1", "SNAPSHOT_READY")
 
     assert payload is not None
     assert payload["snapshot"]["account_seq"] == "abc"
-    assert payload["gate"]["decision"] == "SKIP_AI"
-    assert reopened.next_step("run-1") == "MONITORING_READY"
+    assert reopened.next_step("run-1") == "DATA_READY"
 
 
 def test_restarting_interrupted_step_increments_attempt(tmp_path: Path) -> None:
@@ -51,9 +50,10 @@ def test_completed_checkpoint_is_not_reopened(tmp_path: Path) -> None:
 
 def test_next_step_follows_workflow_order(tmp_path: Path) -> None:
     store = DailyCheckpointStore(tmp_path / "operations.db")
-    assert store.next_step("run-1") == "DATA_READY"
+    assert store.next_step("run-1") == "SNAPSHOT_READY"
 
     for step in (
+        "SNAPSHOT_READY",
         "DATA_READY",
         "MONITORING_READY",
         "CIO_READY",
