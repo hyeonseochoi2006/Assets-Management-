@@ -7,6 +7,7 @@ from threading import RLock
 
 
 DAILY_WORKFLOW_STEPS = (
+    "SNAPSHOT_READY",
     "DATA_READY",
     "MONITORING_READY",
     "CIO_READY",
@@ -201,11 +202,12 @@ class DailyCheckpointStore:
                 SELECT * FROM daily_run_checkpoints
                 WHERE run_id = ?
                 ORDER BY CASE step
-                    WHEN 'DATA_READY' THEN 1
-                    WHEN 'MONITORING_READY' THEN 2
-                    WHEN 'CIO_READY' THEN 3
-                    WHEN 'BRIEFING_READY' THEN 4
-                    WHEN 'APPROVAL_READY' THEN 5
+                    WHEN 'SNAPSHOT_READY' THEN 1
+                    WHEN 'DATA_READY' THEN 2
+                    WHEN 'MONITORING_READY' THEN 3
+                    WHEN 'CIO_READY' THEN 4
+                    WHEN 'BRIEFING_READY' THEN 5
+                    WHEN 'APPROVAL_READY' THEN 6
                     ELSE 99
                 END
                 """,
