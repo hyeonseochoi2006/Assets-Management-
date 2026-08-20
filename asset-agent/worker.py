@@ -23,9 +23,6 @@ from operations.worker_store import (
 )
 
 
-_TRUE_VALUES = {"1", "true", "yes", "on"}
-
-
 def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name, str(default)).strip()
     try:
@@ -57,9 +54,7 @@ class AssetWorker:
             minimum=5,
             maximum=60,
         )
-        self.worker_id = (
-            f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex}"
-        )
+        self.worker_id = f"{socket.gethostname()}:{os.getpid()}:{uuid4().hex}"
 
     def run(self, stop_event: Event | None = None) -> None:
         stop = stop_event or Event()
@@ -101,8 +96,10 @@ class AssetWorker:
                 self.store.record_error(self.worker_id, failure)
             raise
         finally:
-            self.scheduler.stop()
+            # A process that failed to acquire the lease must not touch the
+            # scheduler owned by the live worker.
             if acquired:
+                self.scheduler.stop()
                 self.store.release(self.worker_id, error=failure)
 
 
