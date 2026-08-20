@@ -53,5 +53,6 @@ jobs:
           tests/test_daily_scheduler.py
           tests/test_daily_checkpoints.py
           tests/test_daily_recovery.py
+          tests/test_daily_runner_resume.py
           tests/test_external_resume_safety.py
           tests/test_ceo_operating_policy.py
