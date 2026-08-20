@@ -1,0 +1,39 @@
+name: Automation Smoke
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "asset-agent/**"
+      - ".github/workflows/automation-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  worker-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: asset-agent
+    env:
+      ASSET_DAILY_SCHEDULE_ENABLED: "false"
+      ASSET_ENV: "CI"
+      ASSET_BRANCH: "dev"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: asset-agent/requirements-dev.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Compile automation modules
+        run: python -m py_compile worker.py operations/worker_store.py api/app.py api/scheduler.py
+
+      - name: Run worker and scheduler smoke tests
+        run: python -m pytest -q tests/test_worker_runtime.py tests/test_daily_scheduler.py tests/test_ceo_operating_policy.py
