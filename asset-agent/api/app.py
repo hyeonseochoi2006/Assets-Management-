@@ -19,6 +19,7 @@ from api.service import (
     start_job,
 )
 from operations.approval_store import APPROVAL_STORE, ApprovalStoreError
+from operations.checkpoint_store import CHECKPOINT_STORE
 from operations.run_store import RUN_STORE
 from operations.schedule_store import SCHEDULE_STORE
 from operations.worker_store import WORKER_STORE
@@ -51,7 +52,7 @@ app = FastAPI(
         "asset worker. Approval decisions are recorded but never place, modify, "
         "or cancel brokerage orders."
     ),
-    version="0.8.0",
+    version="0.9.0",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -196,7 +197,29 @@ def get_latest_daily_operations() -> dict[str, object]:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="no Daily Operations run has been recorded yet",
         )
-    return latest
+    run_id = str(latest["run_id"])
+    return {
+        **latest,
+        "checkpoints": CHECKPOINT_STORE.list_for_run(run_id),
+        "next_checkpoint": CHECKPOINT_STORE.next_step(run_id),
+    }
+
+
+@protected_api.get("/api/v1/operations/daily/{run_id}/checkpoints")
+def get_daily_operation_checkpoints(run_id: str) -> dict[str, object]:
+    checkpoints = CHECKPOINT_STORE.list_for_run(run_id)
+    if not checkpoints:
+        latest = RUN_STORE.latest_run()
+        if latest is None or str(latest.get("run_id")) != run_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Daily Operations run or checkpoints not found",
+            )
+    return {
+        "run_id": run_id,
+        "checkpoints": checkpoints,
+        "next_checkpoint": CHECKPOINT_STORE.next_step(run_id),
+    }
 
 
 @protected_api.get("/api/v1/operations/daily/history")
