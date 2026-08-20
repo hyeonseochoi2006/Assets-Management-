@@ -84,6 +84,7 @@ class DailyRecoveryStore:
                 WHERE j.source = 'SYSTEM'
                   AND j.action IN ('DAILY_OPERATIONS', 'DAILY_SCAN')
                   AND j.status = 'INTERRUPTED'
+                  AND j.schedule_key IS NOT NULL
                 ORDER BY j.created_at ASC
                 LIMIT ?
                 """,
