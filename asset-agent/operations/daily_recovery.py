@@ -32,18 +32,22 @@ class DailyRecoveryStore:
         connection.execute("PRAGMA busy_timeout = 5000")
         return connection
 
+    @staticmethod
+    def _ensure_resume_column(connection: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(daily_runs)"
+            ).fetchall()
+        }
+        if columns and "resume_count" not in columns:
+            connection.execute(
+                "ALTER TABLE daily_runs ADD COLUMN resume_count INTEGER NOT NULL DEFAULT 0"
+            )
+
     def _initialize(self) -> None:
         with self._connect() as connection:
-            columns = {
-                row["name"]
-                for row in connection.execute(
-                    "PRAGMA table_info(daily_runs)"
-                ).fetchall()
-            }
-            if columns and "resume_count" not in columns:
-                connection.execute(
-                    "ALTER TABLE daily_runs ADD COLUMN resume_count INTEGER NOT NULL DEFAULT 0"
-                )
+            self._ensure_resume_column(connection)
 
     def snapshot_saved(self, run_id: str) -> bool:
         with self._lock, self._connect() as connection:
@@ -60,6 +64,7 @@ class DailyRecoveryStore:
     def recoverable_jobs(self, limit: int = 20) -> list[dict[str, object]]:
         safe_limit = max(1, min(limit, 100))
         with self._lock, self._connect() as connection:
+            self._ensure_resume_column(connection)
             rows = connection.execute(
                 """
                 SELECT
@@ -95,6 +100,7 @@ class DailyRecoveryStore:
         if run_kind not in {"SCAN", "CLOSE"}:
             raise ValueError("run_kind must be SCAN or CLOSE")
         with self._lock, self._connect() as connection:
+            self._ensure_resume_column(connection)
             row = connection.execute(
                 "SELECT * FROM daily_runs WHERE run_id = ?",
                 (run_id,),
