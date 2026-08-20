@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from api.auth import get_configured_api_token, require_api_token
 from api.job_store import JOB_STORE
-from api.scheduler import DAILY_SCHEDULER
+from api.scheduler import DailyScheduleConfig
 from api.service import (
     ActiveJobError,
     RetryJobError,
@@ -20,6 +20,8 @@ from api.service import (
 )
 from operations.approval_store import APPROVAL_STORE, ApprovalStoreError
 from operations.run_store import RUN_STORE
+from operations.schedule_store import SCHEDULE_STORE
+from operations.worker_store import WORKER_STORE
 
 
 class JobRequest(BaseModel):
@@ -35,22 +37,21 @@ class ApprovalDecisionRequest(BaseModel):
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # Fail closed: never serve portfolio or approval data without a strong token.
     get_configured_api_token()
+    # State cleanup is safe here, but the recurring scheduler is deliberately
+    # NOT started by the API. Automatic scheduling belongs to worker.py.
     recover_interrupted_work()
-    DAILY_SCHEDULER.start()
-    try:
-        yield
-    finally:
-        DAILY_SCHEDULER.stop()
+    yield
 
 
 app = FastAPI(
     title="Asset Management HQ API",
     description=(
         "Read-only brokerage bridge and CEO operating API for the Python "
-        "investment-agent company. Approval decisions are recorded but never "
-        "place, modify, or cancel brokerage orders."
+        "investment-agent company. Recurring scheduling runs in the separate "
+        "asset worker. Approval decisions are recorded but never place, modify, "
+        "or cancel brokerage orders."
     ),
-    version="0.7.0",
+    version="0.8.0",
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -83,6 +84,54 @@ def health() -> dict[str, str]:
         "mode": os.getenv("ASSET_ENV", "UNKNOWN"),
         "branch": os.getenv("ASSET_BRANCH", "unknown"),
     }
+
+
+def _configured_schedule_fallback() -> dict[str, object]:
+    """Describe configured schedule when no live worker snapshot exists yet."""
+    config = DailyScheduleConfig.from_env()
+    return {
+        "enabled": config.enabled,
+        "daily_time": (
+            config.daily_time.strftime("%H:%M")
+            if config.daily_time is not None
+            else None
+        ),
+        "scan_times": [item.strftime("%H:%M") for item in config.scan_times],
+        "schedule_times": [
+            *[
+                {"run_kind": "SCAN", "time": item.strftime("%H:%M")}
+                for item in config.scan_times
+            ],
+            {
+                "run_kind": "CLOSE",
+                "time": (
+                    config.daily_time.strftime("%H:%M")
+                    if config.daily_time is not None
+                    else None
+                ),
+            },
+        ],
+        "timezone": config.timezone_name,
+        "misfire_grace_minutes": config.grace_minutes,
+        "next_run_at": None,
+        "recent_events": SCHEDULE_STORE.recent(7),
+    }
+
+
+def _worker_public_status() -> dict[str, object]:
+    worker = WORKER_STORE.status()
+    if worker is None:
+        return {
+            "status": "NOT_STARTED",
+            "healthy": False,
+            "worker_id": None,
+            "heartbeat_at": None,
+            "lease_expires_at": None,
+            "last_error": None,
+        }
+    public = dict(worker)
+    public.pop("scheduler_snapshot", None)
+    return public
 
 
 @protected_api.get("/api/v1/auth/check")
@@ -159,7 +208,24 @@ def get_daily_operations_history() -> dict[str, object]:
 
 @protected_api.get("/api/v1/operations/daily/schedule")
 def get_daily_operations_schedule() -> dict[str, object]:
-    return DAILY_SCHEDULER.snapshot()
+    worker = WORKER_STORE.status()
+    worker_snapshot = worker.get("scheduler_snapshot") if worker else None
+    schedule = (
+        dict(worker_snapshot)
+        if isinstance(worker_snapshot, dict)
+        else _configured_schedule_fallback()
+    )
+    return {
+        **schedule,
+        "execution_owner": "asset-worker",
+        "worker": _worker_public_status(),
+    }
+
+
+@protected_api.get("/api/v1/worker/status")
+def get_worker_status() -> dict[str, object]:
+    """Return the durable heartbeat/lease state of the automatic worker."""
+    return _worker_public_status()
 
 
 @protected_api.get("/api/v1/approvals")
