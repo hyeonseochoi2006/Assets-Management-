@@ -15,7 +15,7 @@ from threading import Event
 from uuid import uuid4
 
 from api.scheduler import DAILY_SCHEDULER, DailyScheduler
-from api.service import recover_interrupted_work
+from api.service import recover_interrupted_work, resume_interrupted_daily_work
 from operations.worker_store import (
     WORKER_STORE,
     WorkerAlreadyRunningError,
@@ -43,11 +43,13 @@ class AssetWorker:
         store: WorkerRuntimeStore = WORKER_STORE,
         scheduler: DailyScheduler = DAILY_SCHEDULER,
         recover_fn: Callable[[], list[str]] = recover_interrupted_work,
+        resume_fn: Callable[[], list[str]] = resume_interrupted_daily_work,
         heartbeat_seconds: int | None = None,
     ) -> None:
         self.store = store
         self.scheduler = scheduler
         self.recover_fn = recover_fn
+        self.resume_fn = resume_fn
         self.heartbeat_seconds = heartbeat_seconds or _bounded_int(
             "ASSET_WORKER_HEARTBEAT_SECONDS",
             default=15,
@@ -73,8 +75,10 @@ class AssetWorker:
             acquired = True
 
             # Recovery happens in the automatic worker so stale work is cleaned
-            # up even when the HQ API is offline.
+            # up even when the HQ API is offline. Only scheduled SYSTEM Daily
+            # work is auto-resumed; manual CEO jobs remain explicit.
             self.recover_fn()
+            self.resume_fn()
             self.scheduler.start()
 
             if not self.store.heartbeat(
