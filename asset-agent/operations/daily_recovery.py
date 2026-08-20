@@ -45,6 +45,18 @@ class DailyRecoveryStore:
                     "ALTER TABLE daily_runs ADD COLUMN resume_count INTEGER NOT NULL DEFAULT 0"
                 )
 
+    def snapshot_saved(self, run_id: str) -> bool:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT 1 FROM portfolio_snapshots
+                WHERE run_id = ?
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+        return row is not None
+
     def recoverable_jobs(self, limit: int = 20) -> list[dict[str, object]]:
         safe_limit = max(1, min(limit, 100))
         with self._lock, self._connect() as connection:
