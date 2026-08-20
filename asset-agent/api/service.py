@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from ceo_desk.hq_state import AGENT_MISSIONS
 from data.portfolio_monitor import get_live_portfolio_snapshot
 from departments.portfolio import run_portfolio_review
 from executive.cio import run_cio_pipeline
+from operations.daily_recovery import DAILY_RECOVERY_STORE
 from operations.daily_runner import run_daily_operations
 from operations.run_store import RUN_STORE
 from operations.schedule_store import SCHEDULE_STORE
@@ -35,7 +37,7 @@ class RetryJobError(RuntimeError):
 
 
 def recover_interrupted_work() -> list[str]:
-    """Recover jobs whose worker lease expired and link Daily runs to them."""
+    """Mark jobs whose worker lease expired and link Daily runs to them."""
     recovered_ids = JOB_STORE.recover_stale_jobs()
     RUN_STORE.interrupt_jobs(
         recovered_ids,
@@ -182,9 +184,29 @@ def _run_job(job_id: str, command: CEOCommand) -> None:
         heartbeat_thread.join(timeout=1)
 
 
+def _daily_output(result: dict[str, object], run_kind: str) -> str:
+    briefing = result.get("briefing")
+    if isinstance(briefing, str) and briefing.strip():
+        return briefing
+
+    cio = result.get("cio")
+    cio_summary = "중요 변화 없음."
+    if isinstance(cio, dict):
+        summary = cio.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            cio_summary = summary
+    return (
+        f"=== DAILY {run_kind} COMPLETE ===\n"
+        f"{cio_summary}\n"
+        "CEO 행동 필요 없음.\n"
+        f"Run ID: {result['run_id']}"
+    )
+
+
 def _run_daily_system_job(
     job_id: str,
     run_kind: Literal["SCAN", "CLOSE"] = "CLOSE",
+    resume_run_id: str | None = None,
 ) -> None:
     heartbeat_stop = Event()
     heartbeat_thread = Thread(
@@ -203,26 +225,9 @@ def _run_daily_system_job(
             status_callback=status_callback,
             job_id=job_id,
             run_kind=run_kind,
+            resume_run_id=resume_run_id,
         )
-        briefing = result.get("briefing")
-
-        if isinstance(briefing, str) and briefing.strip():
-            output = briefing
-        else:
-            cio = result.get("cio")
-            cio_summary = "중요 변화 없음."
-            if isinstance(cio, dict):
-                summary = cio.get("summary")
-                if isinstance(summary, str) and summary.strip():
-                    cio_summary = summary
-            output = (
-                f"=== DAILY {run_kind} COMPLETE ===\n"
-                f"{cio_summary}\n"
-                "CEO 행동 필요 없음.\n"
-                f"Run ID: {result['run_id']}"
-            )
-
-        JOB_STORE.complete_job(job_id, output, "markdown")
+        JOB_STORE.complete_job(job_id, _daily_output(result, run_kind), "markdown")
         SCHEDULE_STORE.finish_job(job_id, "COMPLETED")
 
     except Exception as exc:
@@ -255,6 +260,70 @@ def _start_thread(
         JOB_STORE.fail_job(job_id, error)
         SCHEDULE_STORE.finish_job(job_id, "FAILED", error)
         raise
+
+
+def resume_interrupted_daily_work() -> list[str]:
+    """Resume at most one interrupted scheduled Daily job from checkpoints.
+
+    Manual CEO jobs are intentionally excluded. If the Daily run had already
+    completed before the process died, only the outer job/schedule record is
+    repaired; no analysis is repeated.
+    """
+    resumed_job_ids: list[str] = []
+    with _START_LOCK:
+        if JOB_STORE.active_job_id() is not None:
+            return resumed_job_ids
+
+        for item in DAILY_RECOVERY_STORE.recoverable_jobs():
+            job_id = str(item["job_id"])
+            action = str(item["action"])
+            run_kind: Literal["SCAN", "CLOSE"] = (
+                "SCAN" if action == "DAILY_SCAN" else "CLOSE"
+            )
+            run_id = str(item["run_id"]) if item.get("run_id") else None
+            run_status = str(item["run_status"]) if item.get("run_status") else None
+
+            if run_status == "COMPLETED" and run_id is not None:
+                briefing = item.get("briefing")
+                if isinstance(briefing, str) and briefing.strip():
+                    output = briefing
+                else:
+                    summary = "중요 변화 없음."
+                    raw_cio = item.get("cio_json")
+                    if isinstance(raw_cio, str) and raw_cio:
+                        try:
+                            cio = json.loads(raw_cio)
+                        except json.JSONDecodeError:
+                            cio = None
+                        if isinstance(cio, dict) and isinstance(cio.get("summary"), str):
+                            summary = str(cio["summary"])
+                    output = (
+                        f"=== DAILY {run_kind} COMPLETE ===\n"
+                        f"{summary}\n"
+                        "복구 시 이미 완료된 Run을 확인했습니다. 분석을 반복하지 않았습니다.\n"
+                        f"Run ID: {run_id}"
+                    )
+                if DAILY_RECOVERY_STORE.restore_completed_job(job_id, output):
+                    resumed_job_ids.append(job_id)
+                continue
+
+            if run_status not in {None, "INTERRUPTED"}:
+                continue
+            if not DAILY_RECOVERY_STORE.requeue_interrupted_job(job_id):
+                break
+            job = JOB_STORE.get_job(job_id)
+            if job is None:
+                break
+            _start_thread(
+                job,
+                _run_daily_system_job,
+                (job_id, run_kind, run_id),
+                f"asset-daily-resume-{job_id}",
+            )
+            resumed_job_ids.append(job_id)
+            break
+
+    return resumed_job_ids
 
 
 def start_job(
@@ -337,7 +406,7 @@ def start_daily_operations(
         _start_thread(
             job,
             _run_daily_system_job,
-            (str(job["job_id"]), run_kind),
+            (str(job["job_id"]), run_kind, None),
             f"asset-daily-{job['job_id']}",
         )
 
