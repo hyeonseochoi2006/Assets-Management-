@@ -209,7 +209,11 @@ def get_daily_operations_history() -> dict[str, object]:
 @protected_api.get("/api/v1/operations/daily/schedule")
 def get_daily_operations_schedule() -> dict[str, object]:
     worker = WORKER_STORE.status()
-    worker_snapshot = worker.get("scheduler_snapshot") if worker else None
+    worker_snapshot = (
+        worker.get("scheduler_snapshot")
+        if worker and worker.get("healthy") is True
+        else None
+    )
     schedule = (
         dict(worker_snapshot)
         if isinstance(worker_snapshot, dict)
